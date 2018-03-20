@@ -1,0 +1,20 @@
+[DEFAULT]
+log_dir=C:\path\to\dir
+
+# role: master | node
+role=master
+# if node then give domain or IP of master
+master_domain=localhost
+
+[DATABASE]
+db_dir=C:\path\to\dir
+
+[NODELISTENER]
+log_dir=C:\path\to\dir
+port=5026
+
+[TERMINALLISTENER]
+port=5025
+
+[HTTPLISTENER]
+port=443
