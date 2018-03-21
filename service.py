@@ -9,7 +9,7 @@ import logging
 from multiprocessing import Process, Pipe
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-from node_listener_process import NodeListenerProcess
+from utils.node_listener_process import NodeListenerProcess
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
