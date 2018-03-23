@@ -4,5 +4,5 @@ class Node:
     id = None
     name = None
     ip = None
-    secure_key = None
+    key_guid = None
     guid = None
