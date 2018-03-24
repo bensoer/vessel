@@ -1,6 +1,7 @@
 import sqlite3
 import uuid
 from db.models.Key import Key
+from db.models.Script import Script
 
 class SQLiteManager:
 
@@ -117,3 +118,52 @@ class SQLiteManager:
         self._conn.commit()
 
         return self.getKeyOfId(int(key_id))
+
+    def getScriptOfId(self, script_id):
+
+        query = "SELECT id, guid, file_name, script_engine FROM scripts WHERE id = " + str(script_id) + ""
+
+        self._logger.info("Getting Script Of ID: " + str(script_id))
+        self._cursor.execute(query)
+        script = self._cursor.fetchone()
+
+        if script is None:
+            return None
+
+        self._logger.info(script)
+
+        script_model = Script()
+        script_model.id = script[0]
+        script_model.guid = uuid.UUID(script[1])
+        script_model.file_name = script[2]
+        script_model.script_engine = script[3]
+
+        return script_model
+
+    def deleteAllScripts(self):
+
+        query = "DELETE FROM scripts"
+
+        self._logger.info("Deleting All Script Entries")
+        self._cursor.execute(query)
+        self._conn.commit()
+
+    def insertScript(self, script):
+
+        guid = script.guid
+        if script.guid == None:
+            guid = uuid.uuid4()
+
+        file_name = script.file_name
+        script_engine = script.script_engine
+
+        query = "INSERT INTO scripts (guid, file_name, script_engine) VALUES ('{guid}', '{file_name}', '{script_engine}')"
+        query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine)
+
+        self._logger.info("Inserting Script")
+        self._cursor.execute(query)
+
+        script_id = self._cursor.lastrowid
+        self._conn.commit()
+
+        return self.getScriptOfId(int(script_id))

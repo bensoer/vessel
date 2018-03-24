@@ -10,6 +10,9 @@ from multiprocessing import Process, Pipe
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 from utils.node_listener_process import NodeListenerProcess
+from utils.terminal_listener_process import TerminalListenerProcess
+import utils.vesselhelper as vh
+from db.models.Script import Script
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
@@ -27,6 +30,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     _role = None
 
     _node_process = None
+
+    _terminal_process = None
 
     def __init__(self,args):
         win32serviceutil.ServiceFramework.__init__(self,args)
@@ -64,11 +69,43 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self._logger.info("Service Is Initializing...")
 
         # setup database
-        #sqlite_manager = SQLiteManager(self._config)
+        sqlite_manager = SQLiteManager(self._config)
 
         self._logger.info("Master Role Detected. Setting Up Service For Master Role")
 
+        # catalogue all the scripts in the system
+        self._logger.info("Catalogueing Scripts On The System")
+        sqlite_manager.deleteAllScripts()
+        script_files = os.listdir("./scripts")
+        for script_file in script_files:
+            engine_name = vh.determine_engine_for_script(script_file)
+
+            if engine_name is None:
+                self._logger.error("Could Not Determine Appropriate Engine For Script: " + str(script_file)
+                                   + " Script Will Not Be Catalogued")
+                continue
+
+            script = Script()
+            script.file_name = script_file
+            script.script_engine = engine_name
+            sqlite_manager.insertScript(script)
+
+
         # create process for listening for terminal connections
+        try:
+            self._logger.info("Now Creating Pipe For Terminal Process")
+            terminal_to_parent_pipe, terminal_to_child_pipe = Pipe()
+            self._logger.info("Now Creating TerminalListenerProcess Class")
+            self._logger.info("Now Creating Process With Boostrapper")
+            self._terminal_process = Process(target=bootstrapper, args=(TerminalListenerProcess, (terminal_to_parent_pipe, terminal_to_child_pipe, self._config)))
+            self._logger.info("Now Starting Process")
+            self._terminal_process.start()
+            self._logger.info("Termina Process Has Started Running")
+        except Exception as e:
+            self._logger.exception("An Exception Was Thrown Starting The Node Listener Process")
+            self._logger.error("Later - An Exception Was Thrown")
+
+            return
 
         # create process for listening for node connections
         #  READ through parent_pipe, WRITE through child_pipe

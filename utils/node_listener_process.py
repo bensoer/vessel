@@ -152,4 +152,4 @@ class NodeListenerProcess:
                     pass
 
         except Exception as e:
-            self.logger.exception("Error Initalizing Sockets")
+            self.logger.exception("Error Processing For Node Listener")
