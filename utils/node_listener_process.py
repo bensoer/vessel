@@ -150,17 +150,12 @@ class NodeListenerProcess:
         node_socket2 = self.portipmap2socket[node.ip + ":" + str(node.port)]
 
         serialized_command = json.dumps(command)
-        print(serialized_command)
-        print(str(serialized_command))
         self.logging_queue.put("Serialized Command: >" + str(serialized_command) + "<")
 
         try:
 
             public_key = sql_manager.getKeyOfGuid(node.key_guid)
-            print(public_key)
-            print(public_key.key)
             base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(serialized_command, public_key.key)
-            print(base64_encrypted_bytes)
             node_socket2.send(base64_encrypted_bytes)
             self.logging_queue.put("Serialized Message Sent")
             sql_manager.closeEverything()  # can't use sql_manager after this

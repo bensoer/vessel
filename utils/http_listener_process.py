@@ -101,6 +101,29 @@ class HttpListenerProcess:
 
             return jsonify(all_scripts_as_dictionaries)
 
+        @app.route("/api/script/scan", methods=['POST'])
+        def POSTScanForScripts():
+            self.logger.info("Scanning Local System For Scripts")
+
+            self._pipe_lock.acquire()
+            # now query to get the scripts
+            action = dict()
+            action['command'] = "EXEC"
+            action['from'] = "HTTP"
+            action['to'] = "MASTER"
+            action['params'] = "SCAN.SCRIPTS"
+            action['rawdata'] = ""
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                return GETAllScripts()
+
         @app.route("/api/script/<script_guid>", methods=['GET'])
         def GETScriptOfGuid(script_guid):
             self.logger.info("Fetching Script Of Guid: " + script_guid)

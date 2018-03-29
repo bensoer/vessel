@@ -1,5 +1,6 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Hash.SHA256 import SHA256Hash
 import base64
 import json
 
@@ -32,7 +33,14 @@ def encrypt_string_with_public_key_to_base64_bytes(string_message:str, exported_
     '''
 
     public_key = RSA.import_key(exported_public_key.decode('utf8'))
-    cipher_rsa = PKCS1_OAEP.new(public_key)
+    cipher_rsa = PKCS1_OAEP.new(public_key, hashAlgo=SHA256Hash)
+
+    message_bytes = string_message.encode()
+    segments = [message_bytes[i:i+190] for i in range(0, len(message_bytes), 190)]
+
+    encrypted_segments = list()
+    for segment in segments:
+        encrypted_bytes_segment = cipher_rsa.encrypt(segment)
 
     encrypted_bytes_message = cipher_rsa.encrypt(string_message.encode())
     base64_encoded_bytes = base64.b64encode(encrypted_bytes_message)
@@ -51,7 +59,7 @@ def decrypt_base64_bytes_with_private_key_to_string(base64_cipher_bytes:bytes, e
     '''
 
     private_key = RSA.import_key(exported_private_key, private_key_password)
-    cipher_rsa = PKCS1_OAEP.new(private_key)
+    cipher_rsa = PKCS1_OAEP.new(private_key, hashAlgo=SHA256Hash)
 
     encrypted_bytes_message = base64.b64decode(base64_cipher_bytes)
     plaintext_bytes = cipher_rsa.decrypt(encrypted_bytes_message)

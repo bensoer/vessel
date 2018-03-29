@@ -38,6 +38,10 @@ def pipe_recv_handler(master_process, parent_pipe):
             master_process.sendMessageToTerminalProcess(command)
         elif message_for == "HTTP":
             master_process.sendMessageToHttpProcess(command)
+        elif message_for == "MASTER":
+            answer = master_process.handle_master_requests(command)
+            # send the answer back wherever it came (most likely the http)
+            parent_pipe.send(answer)
         else:
             master_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
 
@@ -93,19 +97,22 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self._logger.info("Service Is Starting")
         self.main()
 
-    def main(self):
+    def handle_master_requests(self, command):
 
-        self._logger.info("Service Is Initializing...")
+        if command['command'] == "EXEC" and command['params'] == "SCAN.SCRIPTS":
+            sqlite_manager = SQLiteManager(self._config, self._logger)
+            self.catalogue_local_scripts(sqlite_manager)
+            sqlite_manager.closeEverything()
 
-        # setup database
-        sqlite_manager = SQLiteManager(self._config, self._logger)
+            old_from = command['from']
+            command['from'] = command['to']
+            command['to'] = old_from
+            command['param'] = "SUCCESS"
+            command['rawdata'] = ""
 
-        self._logger.info("Master Role Detected. Setting Up Service For Master Role")
+            return command
 
-        # catalogue all the scripts in the system
-        self._logger.info("Catalogueing Scripts On The System")
-        #sqlite_manager.deleteAllScripts()
-
+    def catalogue_local_scripts(self, sqlite_manager):
         self._logger.info("Searching For New Scripts On The System")
         known_scripts = sqlite_manager.getAllScripts()
         script_files = os.listdir(self._root_dir + "/scripts")
@@ -130,6 +137,20 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
                 # this script doesn't exist in the file system
                 sqlite_manager.deleteScriptOfId(known_script.id)
 
+
+    def main(self):
+
+        self._logger.info("Service Is Initializing...")
+
+        # setup database
+        sqlite_manager = SQLiteManager(self._config, self._logger)
+
+        self._logger.info("Master Role Detected. Setting Up Service For Master Role")
+
+        # catalogue all the scripts in the system
+        self._logger.info("Catalogueing Scripts On The System")
+        #sqlite_manager.deleteAllScripts()
+        self.catalogue_local_scripts(sqlite_manager)
 
         # create process for listening for terminal connections
         try:
