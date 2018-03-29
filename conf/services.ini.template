@@ -1,20 +1,32 @@
 [DEFAULT]
-log_dir=C:\path\to\dir
+root_dir=C:\path\to\dir
 
-# role: master | node
-role=master
-# if node then give domain or IP of master
-master_domain=localhost
+master_domain=master.someendpoint.com
+master_port=5026
+private_key_password=mysecurepassword
+
+[LOGGING]
+log_dir=C:\path\to\dir
+max_file_count=10
+max_file_size=8192
+
+[META]
+version=1.0.0
 
 [DATABASE]
-db_dir=C:\path\to\dir
+db_dir=C:\Users\Ben Soer\PycharmProjects\vessel\db
 
 [NODELISTENER]
 log_dir=C:\path\to\dir
 port=5026
+bind_ip=0.0.0.0
 
 [TERMINALLISTENER]
+log_dir=C:\path\to\dir
 port=5025
+bind_ip=0.0.0.0
 
 [HTTPLISTENER]
-port=443
+log_dir=C:\path\to\dir
+port=5024
+bind_ip=0.0.0.0

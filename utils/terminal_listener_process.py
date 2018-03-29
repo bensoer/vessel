@@ -1,4 +1,5 @@
 from socket import *
+import errno
 import select
 from db.models.Node import Node
 from db.models.Key import Key
@@ -13,8 +14,7 @@ import utils.vesselhelper as vh
 class TerminalListenerProcess:
 
     _sql_manager = None
-    to_child_pipe = None
-    _to_parent_pipe = None
+    child_pipe = None
     _port = None
     logger = None
 
@@ -24,21 +24,22 @@ class TerminalListenerProcess:
 
     __connections = dict()
 
-    # WRITE through parent_pipe, READ through child_pipe
     def __init__(self, initialization_tuple):
-        to_parent_pipe, to_child_pipe, config = initialization_tuple
+        child_pipe, config = initialization_tuple
 
-        self.to_child_pipe = to_child_pipe
-        self._to_parent_pipe = to_parent_pipe
+        self.child_pipe = child_pipe
 
         self._port = config["TERMINALLISTENER"]["port"]
+        self._bind_ip = config["TERMINALLISTENER"]["bind_ip"]
         self._log_dir = config["TERMINALLISTENER"]["log_dir"]
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/master-service.log"
+        log_path = self._log_dir + "/master-terminal.log"
 
         self.logger = logging.getLogger("TerminalListenerProcess")
         self.logger.setLevel(logging.DEBUG)
-        handler = RotatingFileHandler(log_path, maxBytes=4096, backupCount=10)
+        max_file_size = config["LOGGING"]["max_file_size"]
+        max_file_count = config["LOGGING"]["max_file_count"]
+        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -49,29 +50,7 @@ class TerminalListenerProcess:
 
         self.logger.info("Connection Complete")
 
-    def read_command(self, client_socket):
 
-        full_command = ""
-
-        buffer = ""
-        # detected the start of a message
-        while buffer != "{":
-            buffer = client_socket.recv(1)
-
-        full_command += buffer
-        while buffer != "}":
-            buffer = client_socket.recv(1)
-
-            if buffer == "\\":
-                # if escaped blindly accept the next byte
-                full_command += client_socket.recv(1)
-                continue
-
-            full_command += buffer
-
-        full_command += buffer
-
-        return full_command
 
     def start(self):
         try:
@@ -83,7 +62,7 @@ class TerminalListenerProcess:
             # listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEPORT, 1)
             # listener_socket.setblocking(0)
-            listener_socket.bind(('localhost', int(self._port)))
+            listener_socket.bind((self._bind_ip, int(self._port)))
             listener_socket.listen(10)
 
             while True:
@@ -96,7 +75,7 @@ class TerminalListenerProcess:
                 session_active = True
                 while session_active:
                     # listen for commands
-                    command = self.read_command(node_socket)
+                    command = vh.read_command(node_socket)
                     # {something}
 
 

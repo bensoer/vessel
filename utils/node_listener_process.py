@@ -1,4 +1,5 @@
 from socket import *
+import errno
 import select
 from db.models.Node import Node
 from db.models.Key import Key
@@ -7,43 +8,122 @@ from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 import threading
 import utils.vesselhelper as vh
+import json
+from queue import Queue
 
 
-def pipe_recv_handler(node_listener_process):
-    node_listener_process.logger.info("Pipe Recv Handler Spawned. Listening For Messages")
+def logging_handler(node_listener_process, logging_queue):
     while True:
-        command = node_listener_process.to_child_pipe.recv()
-        node_listener_process.logger.info("Received Command: " + str(command))
+        queue_item = logging_queue.get(block=True)
+        node_listener_process.logger.info(queue_item)
+
+
+def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
+    logging_queue.put("Pipe Recv Handler Spawned. Listening For Messages")
+    while True:
+        logging_queue.put("CHECKING")
+        command = child_pipe.recv()
+        logging_queue.put("GOT SOMETHING")
+        logging_queue.put("Received Command: " + str(command))
+
+        send_success = False
+        if command['command'] == 'GET':
+            node_guid = command['rawdata']
+            send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+        elif command['command'] == 'EXEC':
+            node_guid = command['rawdata'][0]
+            send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+        elif command['command'] == 'MIG':
+            node_guid = command['rawdata'][0]
+            send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+
+        # if the send fails or not of the IFs meet - then return an error back so the client can be informed
+        if not send_success:
+            error_response = dict()
+            error_response['command'] = 'ERROR'
+            error_response['from'] = 'pipe_recv_handler'
+            error_response['to'] = command['from']
+            # (command, command_from, command_to, send_success)
+            error_response['param'] = (command['command'], command['from'], command['to'], send_success)
+            error_response['rawdata'] = "Send Of Message To Node Failed OR IF Condition To Parse node_guid failed"
+            child_pipe.send(error_response)
+
+
+def socket_recv_handler(node_listener_process, logging_queue, node_socket, child_pipe):
+    logging_queue.put("Starting Socket Receive Handler")
+    while True:
+        try:
+            command = node_socket.recv(4096)
+            logging_queue.put("COMMAND RECEIVED FROM SOCKET")
+            logging_queue.put(command)
+
+            command_dict = json.loads(command)
+            child_pipe.send(command_dict)
+        except error as se:
+            if se.errno == errno.ECONNRESET:
+                logging_queue.put("Connection Reset Detected. Failed To Send Message To Node. Node Does Not Exist")
+
+                # cleanup socket information on our side
+                try:
+                    node_socket.shutdown(socket.SHUT_RDWR)
+                except:
+                    pass
+                try:
+                    node_socket.close()
+                except:
+                    pass
+
+                address = node_listener_process.__socketmap2portip[node_socket]
+                ip, port = address
+                del node_listener_process.__portipmap2socket[ip + ":" + str(port)]
+                del node_listener_process.__connections[node_socket.fileno()]
+
+                sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
+                node = sql_manager.getNodeOfIpAndPort(ip, port)
+
+                sql_manager.deleteKeyOfGuid(node.key_guid)
+                sql_manager.deleteNodeOfGuid(node.guid)
+                sql_manager.closeEverything()  # can't use sql_manager after this
+
+                del node_listener_process.__socketmap2portip[node_socket]
 
 class NodeListenerProcess:
 
     _sql_manager = None
-    to_child_pipe = None
-    _to_parent_pipe = None
+    child_pipe = None
     _port = None
     logger = None
+    logging_queue = Queue(2048)
 
     _master_private_key = None
     _master_public_key = None
     _private_key_password = None
 
     __connections = dict()
+    __portipmap2socket = dict()
+    __socketmap2portip = dict()
 
-    # WRITE through parent_pipe, READ through child_pipe
+    _config = None
+
+    _all_to_read = []
+
     def __init__(self, initialization_tuple):
-        to_parent_pipe, to_child_pipe, config = initialization_tuple
+        child_pipe, config = initialization_tuple
 
-        self.to_child_pipe = to_child_pipe
-        self._to_parent_pipe = to_parent_pipe
+        self.child_pipe = child_pipe
+        self._config = config
 
         self._port = config["NODELISTENER"]["port"]
+        self._bind_ip = config["NODELISTENER"]["bind_ip"]
         self._log_dir = config["NODELISTENER"]["log_dir"]
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/master-service.log"
+        log_path = self._log_dir + "/master-node.log"
 
         self.logger = logging.getLogger("NodeListenerProcess")
         self.logger.setLevel(logging.DEBUG)
-        handler = RotatingFileHandler(log_path, maxBytes=4096, backupCount=10)
+        max_file_size = self._config["LOGGING"]["max_file_size"]
+        max_file_count = self._config["LOGGING"]["max_file_count"]
+        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -53,6 +133,53 @@ class NodeListenerProcess:
         self._sql_manager = SQLiteManager(config, self.logger)
 
         self.logger.info("Connection Complete")
+
+    def forwardCommandToAppropriateNode(self, command, node_guid):
+        self.logging_queue.put("Now Attempting Forwarding Command To Appropriate Node")
+        self.logging_queue.put("Searching For Socket Matching Node Guid: " + node_guid)
+
+        sql_manager = SQLiteManager(self._config, self.logger)
+        node = sql_manager.getNodeOfGuid(node_guid)
+        self.logging_queue.put("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
+        node_socket2 = self.__portipmap2socket[node.ip + ":" + str(node.port)]
+
+        serialized_command = json.dumps(command)
+        self.logging_queue.put("Serialized Command: >" + str(serialized_command) + "<")
+
+        try:
+            node_socket2.send(str(serialized_command).encode())
+            self.logging_queue.put("Serialized Message Sent")
+            sql_manager.closeEverything()  # can't use sql_manager after this
+            return True
+        except error as se:
+            if se.errno == errno.ECONNRESET:
+                self.logging_queue.put("Connection Reset Detected. Failed To Send Message To Node. Node Does Not Exist")
+
+                # cleanup socket information on our side
+                try:
+                    node_socket2.shutdown(socket.SHUT_RDWR)
+                except:
+                    pass
+                try:
+                    node_socket2.close()
+                except:
+                    pass
+
+                address = self.__socketmap2portip[node_socket2]
+                ip, port = address
+                del self.__portipmap2socket[node.ip + ":" + str(node.port)]
+                del self.__connections[node_socket2.fileno()]
+
+                sql_manager.deleteKeyOfGuid(node.key_guid)
+                sql_manager.deleteNodeOfGuid(node.guid)
+                sql_manager.closeEverything()  # can't use sql_manager after this
+
+                del self.__socketmap2portip[node_socket2]
+
+                # return False to tell caller
+                return False
+        finally:
+            sql_manager.closeEverything()  # can't use sql_manager after this
 
     def start(self):
         try:
@@ -80,76 +207,75 @@ class NodeListenerProcess:
                 self._master_private_key = private_key.key
                 self._master_public_key = public_key.key
 
-            self.logger.info("Initializing Listener Socket")
-            # startup the listening socket
-            #try:
-            listener_socket = socket(AF_INET, SOCK_STREAM)
-            #listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            #listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            #listener_socket.setblocking(0)
-            listener_socket.bind(('localhost', int(self._port)))
-            listener_socket.listen(10)
+            self.logger.info("Setting Up Queue For MultiThread Handling Of Logging")
 
+            self.logger.info("Launching Logging Queue Thread")
+            l = threading.Thread(target=logging_handler, args=(self, self.logging_queue))
+            l.daemon = True
+            l.start()
 
-            self.logger.info("Storing Socket Information")
-            # store listening socket fd
-            self.__connections[listener_socket.fileno()] = listener_socket
-
-            # store pipe connection socket
-            #self.__connections[self.to_child_pipe.fileno()] = self.to_child_pipe
-
-            self.logger.info("Launching Pipe Listening Thread")
-            t = threading.Thread(target=pipe_recv_handler, args=(self,))
+            self.logging_queue.put("Launching Pipe Listening Thread")
+            t = threading.Thread(target=pipe_recv_handler, args=(self, self.logging_queue, self.child_pipe))
             t.daemon = True
             t.start()
 
-            self.logger.info("Preparing Select")
-            # start select
-            all_to_read = [listener_socket]
-            all_to_write = []
+            self.logging_queue.put("Initializing Listener Socket")
+            # startup the listening socket
+            #try:
+            listener_socket = socket(AF_INET, SOCK_STREAM)
+            listener_socket.bind((self._bind_ip, int(self._port)))
+            listener_socket.listen(10)
+            self.logging_queue.put("Storing Socket Information")
+            # store listening socket fd
+            self.__connections[listener_socket.fileno()] = listener_socket
+            self.logging_queue.put("Now Entering Connection Acceptance Loop")
 
-            self.logger.info("Now Entering Select Loop")
-            ready_to_read, ready_to_write, ready_to_exception = select.select(all_to_read, all_to_write, all_to_read)
+            while True:
 
-            # TODO: Error Handling
-            for error_socket in ready_to_exception:
-                pass
+                node_socket, address = listener_socket.accept()
+                self.logging_queue.put("New Connection Detected. Processing And Adding To System")
 
-            for readable_socket in ready_to_read:
-                if readable_socket.fileno() == listener_socket.fileno():
-                    # this is a new connection - A NEW NODE
-                    self.logger.info("New Connection Detected. Processing And Adding To System")
+                # add mapping table records
+                self.__connections[node_socket.fileno()] = node_socket
+                self.__socketmap2portip[node_socket] = address
+                client_ip, client_port = address
+                self.__portipmap2socket[client_ip + ":" + str(client_port)] = node_socket
 
-                    node_socket, address = listener_socket.accept()
-                    self.__connections[node_socket.fileno()] = node_socket
+                self.logging_queue.put("Passing Security Keys To The New Node")
+                # read the public key from the node for the system
+                node_public_key = node_socket.recv(2048)
+                # send our public key for the node
+                node_socket.send(self._master_public_key)
 
-                    # read the public key from the node for the system
-                    node_public_key = node_socket.recv(2048)
-                    # send our public key for the node
-                    node_socket.send(self._master_public_key)
 
-                    client_ip, client_port = address
 
-                    # add the key to our db
-                    key = Key()
-                    key.key = node_public_key.decode('utf-8')
-                    key.name = "node.key.public"
-                    key = self._sql_manager.insertKey(key)
+                self.logging_queue.put("Adding Key To DB")
+                # add the key to our db
+                key = Key()
+                key.key = node_public_key.decode('utf-8')
+                key.name = "node.key.public"
+                key = self._sql_manager.insertKey(key)
 
-                    # add this node to our db
-                    node = Node()
-                    node.ip = client_ip
-                    node.name = "node"
-                    node.key_guid = key.guid
+                self.logging_queue.put("Adding Node To DB")
+                # add this node to our db
+                node = Node()
+                node.ip = client_ip
+                node.port = client_port
+                node.name = "node"
+                node.key_guid = key.guid
 
-                    self._sql_manager.insertNode(node)
+                self._sql_manager.insertNode(node)
 
-                elif readable_socket.fileno() == self.to_child_pipe.fileno():
-                    # this is a message from the service
-                    pass
-                else:
-                    # this is one of the already connected sockets with something to say
-                    pass
+                self.logging_queue.put("New Connection Establishment Complete")
+
+                self.logging_queue.put("Now Spawning Processing Thread To Handle Future Reads By This Socket")
+
+                self.logging_queue.put("Launching Socket Listening Thread")
+                t = threading.Thread(target=socket_recv_handler, args=(self, self.logging_queue, node_socket, self.child_pipe))
+                t.daemon = True
+                t.start()
+
+                self.logging_queue.put("Processing Of New Connection Complete")
 
         except Exception as e:
             self.logger.exception("Error Processing For Node Listener")
