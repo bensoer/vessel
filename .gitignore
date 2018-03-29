@@ -51,6 +51,7 @@ fabric.properties
 service.ini
 *.db
 *.log
+*.log.*
 __pycache__
 /scripts
 !/scripts/.gitkeep

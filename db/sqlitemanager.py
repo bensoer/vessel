@@ -84,14 +84,14 @@ class SQLiteManager:
 
 
     def deleteNodeOfGuid(self, node_guid):
-        self._logger.info("Deleting Node Of Guid: " + node_guid)
+        self._logger.info("Deleting Node Of Guid: " + str(node_guid))
 
         query = "DELETE FROM nodes WHERE guid = '" + str(node_guid) + "'"
         self._cursor.execute(query)
         self._conn.commit()
 
     def deleteKeyOfGuid(self, key_guid):
-        self._logger.info("Deleting Key Of Guid: " + key_guid)
+        self._logger.info("Deleting Key Of Guid: " + str(key_guid))
 
         query = "DELETE FROM keys WHERE guid = '" + str(key_guid) + "'"
         self._cursor.execute(query)
@@ -115,6 +115,25 @@ class SQLiteManager:
             all_nodes.append(node_model)
 
         return all_nodes
+
+    def getKeyOfGuid(self, key_guid):
+
+        self._logger.info("Getting Key Of Guid: " + str(key_guid))
+        query = "SELECT id, guid, name, description, key FROM keys WHERE guid = '" + str(key_guid) + "'"
+        self._cursor.execute(query)
+        key = self._cursor.fetchone()
+
+        if key is None:
+            return None
+
+        secure_key = Key()
+        secure_key.id = key[0]
+        secure_key.guid = uuid.UUID(key[1])
+        secure_key.name = key[2]
+        secure_key.description = key[3]
+        secure_key.key = key[4].encode()
+
+        return secure_key
 
     def getKeyOfName(self, name):
 

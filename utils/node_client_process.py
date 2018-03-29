@@ -49,9 +49,13 @@ class NodeClientProcess:
 
         self.logger.info("Connection Complete")
 
-    def _send_message(self, message, encrypt_with_key=None):
+    def _send_message(self, message:str, encrypt_with_key=None):
         try:
-            return self._client_socket.send(message)
+            if encrypt_with_key is not None:
+                base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(message, encrypt_with_key)
+                return self._client_socket.send(base64_encrypted_bytes)
+            else:
+                return self._client_socket.send(message)
         except error as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
@@ -83,9 +87,20 @@ class NodeClientProcess:
                 exit(1)
                 return None
 
-    def _recv_message(self, buffer_size, decrypt_with_key=None):
+    def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
-            return self._client_socket.recv(buffer_size)
+
+            if decrypt_with_key_pass is not None:
+
+                base64_encrypted_bytes = self._client_socket.recv(buffer_size)
+
+                private_key, private_key_pass = decrypt_with_key_pass
+                message = vh.decrypt_base64_bytes_with_private_key_to_string(base64_encrypted_bytes,
+                                                                             private_key,
+                                                                             private_key_pass)
+                return message
+            else:
+                return self._client_socket.recv(buffer_size).decode('utf8')
         except error as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info("Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
@@ -109,7 +124,7 @@ class NodeClientProcess:
                 self._client_socket.send(self._node_public_key)
                 self._master_public_key = self._client_socket.recv(2048)
                 # return _recv_message again
-                return self._recv_message(buffer_size, decrypt_with_key=decrypt_with_key)
+                return self._recv_message(buffer_size, decrypt_with_key_pass=decrypt_with_key_pass)
             except:
                 # if connection fails here - then host prob is down. so stop trying
                 self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
@@ -161,11 +176,11 @@ class NodeClientProcess:
             while True:
 
                 self.logger.info("Reading Command From Socket")
-                command = self._recv_message(4096)
+                command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key, self._private_key_password))
                 self.logger.info("COMMAND RECEIVED")
                 self.logger.info(command)
 
-                command_dict = json.loads(command.decode('utf-8'))
+                command_dict = json.loads(command)
 
                 self.logger.info("COMMAND RECEIVED 2")
                 self.logger.info(command_dict)
@@ -185,7 +200,7 @@ class NodeClientProcess:
 
                     self.logger.info("Fetched Data. Now Serializing For Response")
                     serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data).encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
                     self.logger.info("Response Sent")
 
                 elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
@@ -221,7 +236,7 @@ class NodeClientProcess:
                                 command_dict['rawdata'] = (process.stdout, process.stderr, process.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data).encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
 
                             except CalledProcessError as cpe:
                                 self.logger.exception()
@@ -233,7 +248,7 @@ class NodeClientProcess:
                                 command_dict['rawdata'] = str(cpe.cmd) + " \n\n " + str(cpe.output) + " \n\n " + str(cpe.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data).encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
 
                             except OSError as ose:
                                 self.logger.exception()
@@ -247,7 +262,7 @@ class NodeClientProcess:
                                     cpe.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data).encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
 
                     if not script_found:
                         old_from = command_dict['from']
@@ -257,7 +272,7 @@ class NodeClientProcess:
                         command_dict['rawdata'] = "The request script could not be found"
 
                         serialized_data = json.dumps(command_dict)
-                        self._send_message(str(serialized_data).encode())
+                        self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
 
                 elif command_dict["command"] == "MIG":
                     self.logger.info("Script Migration Request Received. Importing Script")
@@ -281,7 +296,7 @@ class NodeClientProcess:
 
                     self.logger.info("Fetched Data. Now Serializing For Response")
                     serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data).encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
                     self.logger.info("Response Sent")
 
                 else:
@@ -296,7 +311,7 @@ class NodeClientProcess:
                     error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
 
                     serialized_data = json.dumps(error_response)
-                    self._send_message(str(serialized_data).encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
 
         except Exception as e:
             self.logger.exception("Error Processing For Node Client")

@@ -53,7 +53,11 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
     logging_queue.put("Starting Socket Receive Handler")
     while True:
         try:
-            command = node_socket.recv(4096)
+            encrypted_bytes = node_socket.recv(4096)
+            command = vh.decrypt_base64_bytes_with_private_key_to_string(encrypted_bytes,
+                                                                         node_listener_process.master_private_key,
+                                                                         node_listener_process.private_key_password)
+
             logging_queue.put("COMMAND RECEIVED FROM SOCKET")
             logging_queue.put(command)
 
@@ -73,10 +77,10 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                 except:
                     pass
 
-                address = node_listener_process.__socketmap2portip[node_socket]
+                address = node_listener_process.socketmap2portip[node_socket]
                 ip, port = address
-                del node_listener_process.__portipmap2socket[ip + ":" + str(port)]
-                del node_listener_process.__connections[node_socket.fileno()]
+                node_listener_process.portipmap2socket.pop(ip+":"+str(port), None)
+                node_listener_process.connections.pop(node_socket.fileno(), None)
 
                 sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
                 node = sql_manager.getNodeOfIpAndPort(ip, port)
@@ -85,7 +89,9 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                 sql_manager.deleteNodeOfGuid(node.guid)
                 sql_manager.closeEverything()  # can't use sql_manager after this
 
-                del node_listener_process.__socketmap2portip[node_socket]
+                node_listener_process.socketmap2portip.pop(node_socket, None)
+                logging_queue.put("Diconnection Process Of Node Complete. Terminating Socket Receive Handler Thread")
+                break
 
 class NodeListenerProcess:
 
@@ -95,13 +101,13 @@ class NodeListenerProcess:
     logger = None
     logging_queue = Queue(2048)
 
-    _master_private_key = None
-    _master_public_key = None
-    _private_key_password = None
+    master_private_key = None
+    master_public_key = None
+    private_key_password = None
 
-    __connections = dict()
-    __portipmap2socket = dict()
-    __socketmap2portip = dict()
+    connections = dict()
+    portipmap2socket = dict()
+    socketmap2portip = dict()
 
     _config = None
 
@@ -116,7 +122,7 @@ class NodeListenerProcess:
         self._port = config["NODELISTENER"]["port"]
         self._bind_ip = config["NODELISTENER"]["bind_ip"]
         self._log_dir = config["NODELISTENER"]["log_dir"]
-        self._private_key_password = config["DEFAULT"]["private_key_password"]
+        self.private_key_password = config["DEFAULT"]["private_key_password"]
         log_path = self._log_dir + "/master-node.log"
 
         self.logger = logging.getLogger("NodeListenerProcess")
@@ -141,13 +147,21 @@ class NodeListenerProcess:
         sql_manager = SQLiteManager(self._config, self.logger)
         node = sql_manager.getNodeOfGuid(node_guid)
         self.logging_queue.put("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
-        node_socket2 = self.__portipmap2socket[node.ip + ":" + str(node.port)]
+        node_socket2 = self.portipmap2socket[node.ip + ":" + str(node.port)]
 
         serialized_command = json.dumps(command)
+        print(serialized_command)
+        print(str(serialized_command))
         self.logging_queue.put("Serialized Command: >" + str(serialized_command) + "<")
 
         try:
-            node_socket2.send(str(serialized_command).encode())
+
+            public_key = sql_manager.getKeyOfGuid(node.key_guid)
+            print(public_key)
+            print(public_key.key)
+            base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(serialized_command, public_key.key)
+            print(base64_encrypted_bytes)
+            node_socket2.send(base64_encrypted_bytes)
             self.logging_queue.put("Serialized Message Sent")
             sql_manager.closeEverything()  # can't use sql_manager after this
             return True
@@ -165,16 +179,14 @@ class NodeListenerProcess:
                 except:
                     pass
 
-                address = self.__socketmap2portip[node_socket2]
-                ip, port = address
-                del self.__portipmap2socket[node.ip + ":" + str(node.port)]
-                del self.__connections[node_socket2.fileno()]
+                self.portipmap2socket.pop(node.ip+":"+str(node.port), None)
+                self.connections.pop(node_socket2, None)
 
                 sql_manager.deleteKeyOfGuid(node.key_guid)
                 sql_manager.deleteNodeOfGuid(node.guid)
                 sql_manager.closeEverything()  # can't use sql_manager after this
 
-                del self.__socketmap2portip[node_socket2]
+                self.socketmap2portip.pop(node_socket2, None)
 
                 # return False to tell caller
                 return False
@@ -191,21 +203,21 @@ class NodeListenerProcess:
 
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
             if private_key is None or public_key is None:
-                self._master_private_key = vh.generate_private_key(self._private_key_password)
-                self._master_public_key = vh.generate_public_key(self._master_private_key, self._private_key_password)
+                self.master_private_key = vh.generate_private_key(self.private_key_password)
+                self.master_public_key = vh.generate_public_key(self.master_private_key, self.private_key_password)
 
                 private_key = Key()
                 private_key.name = "master-me.key.private"
-                private_key.key = self._master_private_key.decode('utf-8')
+                private_key.key = self.master_private_key.decode('utf-8')
                 self._sql_manager.insertKey(private_key)
 
                 public_key = Key()
                 public_key.name = "master-me.key.public"
-                public_key.key = self._master_public_key.decode('utf-8')
+                public_key.key = self.master_public_key.decode('utf-8')
                 self._sql_manager.insertKey(public_key)
             else:
-                self._master_private_key = private_key.key
-                self._master_public_key = public_key.key
+                self.master_private_key = private_key.key
+                self.master_public_key = public_key.key
 
             self.logger.info("Setting Up Queue For MultiThread Handling Of Logging")
 
@@ -227,7 +239,7 @@ class NodeListenerProcess:
             listener_socket.listen(10)
             self.logging_queue.put("Storing Socket Information")
             # store listening socket fd
-            self.__connections[listener_socket.fileno()] = listener_socket
+            self.connections[listener_socket.fileno()] = listener_socket
             self.logging_queue.put("Now Entering Connection Acceptance Loop")
 
             while True:
@@ -236,16 +248,16 @@ class NodeListenerProcess:
                 self.logging_queue.put("New Connection Detected. Processing And Adding To System")
 
                 # add mapping table records
-                self.__connections[node_socket.fileno()] = node_socket
-                self.__socketmap2portip[node_socket] = address
+                self.connections[node_socket.fileno()] = node_socket
+                self.socketmap2portip[node_socket] = address
                 client_ip, client_port = address
-                self.__portipmap2socket[client_ip + ":" + str(client_port)] = node_socket
+                self.portipmap2socket[client_ip + ":" + str(client_port)] = node_socket
 
                 self.logging_queue.put("Passing Security Keys To The New Node")
                 # read the public key from the node for the system
                 node_public_key = node_socket.recv(2048)
                 # send our public key for the node
-                node_socket.send(self._master_public_key)
+                node_socket.send(self.master_public_key)
 
 
 
