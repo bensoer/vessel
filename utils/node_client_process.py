@@ -19,6 +19,7 @@ class NodeClientProcess:
     _node_private_key = None
     _node_public_key = None
     _master_public_key = None
+    _node_aes_key = None
 
     _client_socket = None
 
@@ -52,10 +53,17 @@ class NodeClientProcess:
     def _send_message(self, message:str, encrypt_with_key=None):
         try:
             if encrypt_with_key is not None:
-                base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(message, encrypt_with_key)
+
+                node_private_key, node_private_key_password, node_aes_key = encrypt_with_key
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                             node_private_key,
+                                                                             node_private_key_password)
+
+                base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(message, aes_key)
+                #base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(message, encrypt_with_key)
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
-                return self._client_socket.send(message)
+                return self._client_socket.send(message.encode())
         except error as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
@@ -76,11 +84,21 @@ class NodeClientProcess:
             self._client_socket.connect((self._master_host, int(self._master_port)))
 
             try:
+
                 # exchange keys
-                self._client_socket.send(self._node_public_key)
-                self._master_public_key = self._client_socket.recv(2048)
+                self._master_public_key = self._recv_message(2048)
+
+                node_private_key, node_private_key_password, node_aes_key = encrypt_with_key
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                             node_private_key,
+                                                                             node_private_key_password)
+
+                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                      self._master_public_key)
+                self._client_socket.send(encrypted_aes_key)
+
                 # return _recv_message again
-                return self._client_socket.send(message, encrypt_with_key=encrypt_with_key)
+                return self._send_message(message, encrypt_with_key=encrypt_with_key)
             except:
                 # if connection fails here - then host prob is down. so stop trying
                 self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
@@ -92,12 +110,19 @@ class NodeClientProcess:
 
             if decrypt_with_key_pass is not None:
 
-                base64_encrypted_bytes = self._client_socket.recv(buffer_size)
+                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                             node_private_key,
+                                                                             node_private_key_password)
 
-                private_key, private_key_pass = decrypt_with_key_pass
-                message = vh.decrypt_base64_bytes_with_private_key_to_string(base64_encrypted_bytes,
-                                                                             private_key,
-                                                                             private_key_pass)
+                base64_encrypted_bytes = self._client_socket.recv(buffer_size)
+                #private_key, private_key_pass = decrypt_with_key_pass
+                #message = vh.decrypt_base64_bytes_with_private_key_to_string(base64_encrypted_bytes,
+                #                                                             private_key,
+                #                                                             private_key_pass)
+
+                message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
+
                 return message
             else:
                 return self._client_socket.recv(buffer_size).decode('utf8')
@@ -120,9 +145,19 @@ class NodeClientProcess:
             self._client_socket.connect((self._master_host, int(self._master_port)))
 
             try:
+
                 # exchange keys
-                self._client_socket.send(self._node_public_key)
-                self._master_public_key = self._client_socket.recv(2048)
+                self._master_public_key = self._recv_message(2048)
+
+                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                             node_private_key,
+                                                                             node_private_key_password)
+
+                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                      self._master_public_key)
+                self._client_socket.send(encrypted_aes_key)
+
                 # return _recv_message again
                 return self._recv_message(buffer_size, decrypt_with_key_pass=decrypt_with_key_pass)
             except:
@@ -138,26 +173,39 @@ class NodeClientProcess:
             # generate our RSA Private And Public Keys
             private_key = self._sql_manager.getKeyOfName("node-me.key.private")
             public_key = self._sql_manager.getKeyOfName("node-me.key.public")
+            found_aes_key = self._sql_manager.getKeyOfName("node-me.key.aes")
 
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
-            if private_key is None or public_key is None:
+            if private_key is None or public_key is None or found_aes_key is None:
+                self.logger.info("Keys Have Not Been Generated Before On This Node. This May Take Some Time...")
                 self._node_private_key = vh.generate_private_key(self._private_key_password)
                 self._node_public_key = vh.generate_public_key(self._node_private_key, self._private_key_password)
+                new_aes_key = vh.generate_aes_key(self._private_key_password)
+
+                # our aes key is stored encrypted with our public key
+                self._node_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(new_aes_key, self._node_public_key)
 
                 private_key = Key()
                 private_key.name = "node-me.key.private"
-                private_key.key = self._node_private_key.decode('utf-8')
+                private_key.key = self._node_private_key
                 self._sql_manager.insertKey(private_key)
 
                 public_key = Key()
                 public_key.name = "node-me.key.public"
-                public_key.key = self._node_public_key.decode('utf-8')
+                public_key.key = self._node_public_key
                 self._sql_manager.insertKey(public_key)
+
+                key = Key()
+                key.key = self._node_aes_key.decode('utf-8')  # note this key is encrypted with our public key and then base64 encoded
+                key.name = "node-me.key.aes"
+                self._sql_manager.insertKey(key)
+
             else:
                 self._node_private_key = private_key.key
                 self._node_public_key = public_key.key
+                self._node_aes_key = found_aes_key.key.encode()
 
-            self.logger.info("Local Key Configuration Complete")
+            self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
 
             self._client_socket = socket(AF_INET, SOCK_STREAM)
@@ -165,8 +213,17 @@ class NodeClientProcess:
 
             self.logger.info("Connection Established With Master. Securing Connection With Keys")
 
-            self._send_message(self._node_public_key)
             self._master_public_key = self._recv_message(2048)
+
+            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
+                                                               self._node_private_key,
+                                                               self._private_key_password)
+
+            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                 self._master_public_key)
+
+            self._send_message(encrypted_aes_key.decode('utf-8'))
+
 
             self.logger.info("Key Received From Master")
             self.logger.info(self._master_public_key)
@@ -176,7 +233,9 @@ class NodeClientProcess:
             while True:
 
                 self.logger.info("Reading Command From Socket")
-                command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key, self._private_key_password))
+                command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key,
+                                                                          self._private_key_password,
+                                                                          self._node_aes_key))
                 self.logger.info("COMMAND RECEIVED")
                 self.logger.info(command)
 
@@ -200,7 +259,9 @@ class NodeClientProcess:
 
                     self.logger.info("Fetched Data. Now Serializing For Response")
                     serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
                     self.logger.info("Response Sent")
 
                 elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
@@ -236,7 +297,9 @@ class NodeClientProcess:
                                 command_dict['rawdata'] = (process.stdout, process.stderr, process.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
 
                             except CalledProcessError as cpe:
                                 self.logger.exception()
@@ -248,7 +311,9 @@ class NodeClientProcess:
                                 command_dict['rawdata'] = str(cpe.cmd) + " \n\n " + str(cpe.output) + " \n\n " + str(cpe.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
 
                             except OSError as ose:
                                 self.logger.exception()
@@ -262,7 +327,9 @@ class NodeClientProcess:
                                     cpe.returncode)
 
                                 serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
 
                     if not script_found:
                         old_from = command_dict['from']
@@ -272,7 +339,9 @@ class NodeClientProcess:
                         command_dict['rawdata'] = "The request script could not be found"
 
                         serialized_data = json.dumps(command_dict)
-                        self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
 
                 elif command_dict["command"] == "MIG":
                     self.logger.info("Script Migration Request Received. Importing Script")
@@ -296,7 +365,9 @@ class NodeClientProcess:
 
                     self.logger.info("Fetched Data. Now Serializing For Response")
                     serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
                     self.logger.info("Response Sent")
 
                 else:
@@ -311,7 +382,9 @@ class NodeClientProcess:
                     error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
 
                     serialized_data = json.dumps(error_response)
-                    self._send_message(str(serialized_data), encrypt_with_key=self._master_public_key.encode())
+                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                               self._private_key_password,
+                                                                               self._node_aes_key))
 
         except Exception as e:
             self.logger.exception("Error Processing For Node Client")

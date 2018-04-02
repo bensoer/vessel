@@ -52,11 +52,24 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
 def socket_recv_handler(node_listener_process, logging_queue, node_socket, child_pipe):
     logging_queue.put("Starting Socket Receive Handler")
     while True:
+        sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
         try:
             encrypted_bytes = node_socket.recv(4096)
-            command = vh.decrypt_base64_bytes_with_private_key_to_string(encrypted_bytes,
-                                                                         node_listener_process.master_private_key,
-                                                                         node_listener_process.private_key_password)
+            # find the node belonging to this socket
+            address = node_listener_process.socketmap2portip[node_socket]
+            ip, port = address
+
+            node = sql_manager.getNodeOfIpAndPort(ip, port)
+            # find the aes key for this node
+            key = sql_manager.getKeyOfGuid(node.key_guid)
+            # decrypt the key
+            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(key.key.encode(),
+                                                                        node_listener_process.master_private_key,
+                                                                        node_listener_process.private_key_password)
+
+            command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
+
+            #command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, node_listener_process.aes_key.encode())
 
             logging_queue.put("COMMAND RECEIVED FROM SOCKET")
             logging_queue.put(command)
@@ -87,11 +100,12 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
 
                 sql_manager.deleteKeyOfGuid(node.key_guid)
                 sql_manager.deleteNodeOfGuid(node.guid)
-                sql_manager.closeEverything()  # can't use sql_manager after this
 
                 node_listener_process.socketmap2portip.pop(node_socket, None)
                 logging_queue.put("Diconnection Process Of Node Complete. Terminating Socket Receive Handler Thread")
                 break
+        finally:
+            sql_manager.closeEverything()
 
 class NodeListenerProcess:
 
@@ -104,6 +118,7 @@ class NodeListenerProcess:
     master_private_key = None
     master_public_key = None
     private_key_password = None
+    aes_key = None
 
     connections = dict()
     portipmap2socket = dict()
@@ -153,9 +168,14 @@ class NodeListenerProcess:
         self.logging_queue.put("Serialized Command: >" + str(serialized_command) + "<")
 
         try:
+            key = sql_manager.getKeyOfGuid(node.key_guid)
+            #base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(serialized_command, public_key.key)
+            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(key.key.encode(),
+                                                                         self.master_private_key,
+                                                                         self.private_key_password)
 
-            public_key = sql_manager.getKeyOfGuid(node.key_guid)
-            base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(serialized_command, public_key.key)
+            base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
+                                                                                    aes_key)
             node_socket2.send(base64_encrypted_bytes)
             self.logging_queue.put("Serialized Message Sent")
             sql_manager.closeEverything()  # can't use sql_manager after this
@@ -203,12 +223,12 @@ class NodeListenerProcess:
 
                 private_key = Key()
                 private_key.name = "master-me.key.private"
-                private_key.key = self.master_private_key.decode('utf-8')
+                private_key.key = self.master_private_key
                 self._sql_manager.insertKey(private_key)
 
                 public_key = Key()
                 public_key.name = "master-me.key.public"
-                public_key.key = self.master_public_key.decode('utf-8')
+                public_key.key = self.master_public_key
                 self._sql_manager.insertKey(public_key)
             else:
                 self.master_private_key = private_key.key
@@ -249,18 +269,17 @@ class NodeListenerProcess:
                 self.portipmap2socket[client_ip + ":" + str(client_port)] = node_socket
 
                 self.logging_queue.put("Passing Security Keys To The New Node")
-                # read the public key from the node for the system
-                node_public_key = node_socket.recv(2048)
-                # send our public key for the node
-                node_socket.send(self.master_public_key)
 
-
+                #send the public key
+                node_socket.send(self.master_public_key.encode())
+                #get the encrypted aes key
+                aes_key_encrypted = node_socket.recv(4096)
 
                 self.logging_queue.put("Adding Key To DB")
                 # add the key to our db
                 key = Key()
-                key.key = node_public_key.decode('utf-8')
-                key.name = "node.key.public"
+                key.key = aes_key_encrypted.decode('utf-8') # note this key is encrypted with our public key and then base64 encoded
+                key.name = "node.key.aes"
                 key = self._sql_manager.insertKey(key)
 
                 self.logging_queue.put("Adding Node To DB")
@@ -278,7 +297,10 @@ class NodeListenerProcess:
                 self.logging_queue.put("Now Spawning Processing Thread To Handle Future Reads By This Socket")
 
                 self.logging_queue.put("Launching Socket Listening Thread")
-                t = threading.Thread(target=socket_recv_handler, args=(self, self.logging_queue, node_socket, self.child_pipe))
+                t = threading.Thread(target=socket_recv_handler, args=(self,
+                                                                       self.logging_queue,
+                                                                       node_socket,
+                                                                       self.child_pipe))
                 t.daemon = True
                 t.start()
 

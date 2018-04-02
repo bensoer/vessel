@@ -131,7 +131,7 @@ class SQLiteManager:
         secure_key.guid = uuid.UUID(key[1])
         secure_key.name = key[2]
         secure_key.description = key[3]
-        secure_key.key = key[4].encode()
+        secure_key.key = key[4]
 
         return secure_key
 
@@ -149,7 +149,7 @@ class SQLiteManager:
         self._logger.info(key)
 
         secure_key = Key()
-        secure_key.key = key[4].encode()
+        secure_key.key = key[4]
         secure_key.id = key[0]
         secure_key.name = key[1]
         secure_key.description = key[2]
@@ -171,7 +171,7 @@ class SQLiteManager:
         self._logger.info(key)
 
         secure_key = Key()
-        secure_key.key = key[4].encode()
+        secure_key.key = key[4]
         secure_key.id = key[0]
         secure_key.name = key[1]
         secure_key.description = key[2]
