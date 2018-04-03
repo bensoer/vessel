@@ -13,6 +13,7 @@ from db.models.Script import Script
 import uuid
 import subprocess
 from subprocess import CalledProcessError
+import utils.taskrunner as taskrunner
 
 class NodeClientProcess:
 
@@ -244,133 +245,59 @@ class NodeClientProcess:
                 self.logger.info("COMMAND RECEIVED 2")
                 self.logger.info(command_dict)
 
-                if command_dict["command"] == "GET" and command_dict["params"] == "SCRIPTS":
-                    self.logger.info("Fetch Node Scripts Request Detected. Executing")
-                    all_scripts = self._sql_manager.getAllScripts()
+                try:
 
-                    all_scripts_as_dict = list()
-                    for script in all_scripts:
-                        all_scripts_as_dict.append(script.toDictionary())
+                    if command_dict["command"] == "GET" and command_dict["params"] == "SCRIPTS":
+                        self.logger.info("Fetch Node Scripts Request Detected. Executing")
 
-                    old_from = command_dict['from']
-                    command_dict['from'] = command_dict['to']
-                    command_dict['to'] = old_from
-                    command_dict['rawdata'] = all_scripts_as_dict
+                        response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
 
-                    self.logger.info("Fetched Data. Now Serializing For Response")
-                    serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
-                    self.logger.info("Response Sent")
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
 
-                elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
-                    self.logger.info("Executing Script On Node Request Detected. Executing")
+                    elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
+                        self.logger.info("Executing Script On Node Request Detected. Executing")
 
-                    script_guid = command_dict['rawdata'][1]
+                        response = taskrunner.execute_script_on_node(self._root_dir, self._sql_manager, command_dict, self.logger)
 
-                    all_scripts = self._sql_manager.getAllScripts()
-                    script_found = False
-                    for script in all_scripts:
-                        if script.guid == uuid.UUID(script_guid):
-                            script_found = True
-                            try:
-
-                                # execute the script
-                                absolute_file_path = self._root_dir + "/scripts/" + script.file_name
-                                process = None
-                                if script.script_engine == "":
-                                    process = subprocess.run([absolute_file_path], shell=True, check=True,
-                                                             stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                                                             encoding="utf-8")
-                                else:
-                                    process = subprocess.run([script.script_engine, absolute_file_path], shell=True,
-                                                             check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                                                             encoding="utf-8")
-
-                                process.check_returncode() # will throw exception if execution failed
-
-                                old_from = command_dict['from']
-                                command_dict['from'] = command_dict['to']
-                                command_dict['to'] = old_from
-                                command_dict['param'] = "SUCCESS"
-                                command_dict['rawdata'] = (process.stdout, process.stderr, process.returncode)
-
-                                serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
-
-                            except CalledProcessError as cpe:
-                                self.logger.exception("A CalledProcessError Occurred")
-                                old_from = command_dict['from']
-                                command_dict['from'] = command_dict['to']
-                                command_dict['to'] = old_from
-                                command_dict['param'] = "FAILED"
-                                command_dict['rawdata'] = str(cpe.cmd) + " \n\n " + str(cpe.output) + " \n\n " + str(cpe.returncode)
-
-                                serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
-
-                            except OSError as ose:
-                                self.logger.exception()
-                                self.logger.error("An OS Error Occurred")
-
-                                old_from = command_dict['from']
-                                command_dict['from'] = command_dict['to']
-                                command_dict['to'] = old_from
-                                command_dict['param'] = "FAILED"
-                                command_dict['rawdata'] = str(cpe.cmd) + " \n\n " + str(cpe.output) + " \n\n " + str(
-                                    cpe.returncode)
-
-                                serialized_data = json.dumps(command_dict)
-                                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
-
-                    if not script_found:
-                        old_from = command_dict['from']
-                        command_dict['from'] = command_dict['to']
-                        command_dict['to'] = old_from
-                        command_dict['param'] = "FAILED"
-                        command_dict['rawdata'] = "The request script could not be found"
-
-                        serialized_data = json.dumps(command_dict)
+                        serialized_data = json.dumps(response)
                         self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
                                                                                self._private_key_password,
                                                                                self._node_aes_key))
 
-                elif command_dict["command"] == "MIG":
-                    self.logger.info("Script Migration Request Received. Importing Script")
+                    elif command_dict["command"] == "MIG":
+                        self.logger.info("Script Migration Request Received. Importing Script")
 
-                    node_guid, serialized_script = command_dict['params']
-                    script = Script.fromDictionary(serialized_script)
-                    script.id = self._sql_manager.insertScript(script)
+                        response = taskrunner.migrate(self._root_dir, self._sql_manager, command_dict, self.logger)
 
-                    file_path = self._root_dir + "/scripts/" + script.file_name
-                    fp = open(file_path, 'wb+')
-                    file_data = command_dict['rawdata']
-                    fp.write(file_data)
-                    fp.flush()
-                    fp.close()
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
 
-                    old_from = command_dict['from']
-                    command_dict['from'] = command_dict['to']
-                    command_dict['to'] = old_from
-                    command_dict['param'] = "SUCCESS"
-                    command_dict['rawdata'] = script
+                    else:
+                        self.logger.info("Received Command Has Not Been Configured A Handling. Cannot Process Command")
 
-                    self.logger.info("Fetched Data. Now Serializing For Response")
-                    serialized_data = json.dumps(command_dict)
-                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
-                    self.logger.info("Response Sent")
+                        error_response = dict()
+                        error_response['command'] = 'ERROR'
+                        error_response['from'] = 'node_client'
+                        error_response['to'] = command['from']
+                        error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
+                                                  " To: " + command['to']
+                        error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
 
-                else:
-                    self.logger.info("Received Command Has Not Been Configured A Handling. Cannot Process Command")
+                        serialized_data = json.dumps(error_response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                except Exception as e:
+                    self.logger.exception("Unexpected Error Thrown While Processing a Request.")
 
                     error_response = dict()
                     error_response['command'] = 'ERROR'
@@ -378,14 +305,29 @@ class NodeClientProcess:
                     error_response['to'] = command['from']
                     error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
                                               " To: " + command['to']
-                    error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
+                    error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
                     serialized_data = json.dumps(error_response)
                     self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
                                                                                self._private_key_password,
                                                                                self._node_aes_key))
 
-        except Exception as e:
-            self.logger.exception("Error Processing For Node Client")
 
-            # FIXME: THIS CATCHES UNEXPECTED ERRORS. WE NEED TO GIVE BACK A RESPONSE HERE SO THINGS DON'T CRASH COMPLETELY
+
+        except Exception as e:
+            self.logger.exception("Fatal Error Processing For Node Client")
+
+            error_response = dict()
+            error_response['command'] = 'ERROR'
+            error_response['from'] = 'node_client'
+            error_response['to'] = command['from']
+            error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
+                                      " To: " + command['to']
+            error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
+                                                                        "This Event Or Is In A Broken State. Restart " \
+                                                                        "To Recover"
+
+            serialized_data = json.dumps(error_response)
+            self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                       self._private_key_password,
+                                                                       self._node_aes_key))
