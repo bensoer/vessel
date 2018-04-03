@@ -68,8 +68,12 @@ class HttpListenerProcess:
             return jsonify(command), 500
 
         @app.errorhandler(400)
-        def page_not_found(e):
+        def bad_request(e):
             return jsonify(message=str(e)), 400
+
+        @app.errorhandler(405)
+        def method_not_allowed(e):
+            return jsonify(message=str(e)), 405
 
         @app.errorhandler(404)
         def page_not_found(e):

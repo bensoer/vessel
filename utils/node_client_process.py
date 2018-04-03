@@ -302,8 +302,7 @@ class NodeClientProcess:
                                                                                self._node_aes_key))
 
                             except CalledProcessError as cpe:
-                                self.logger.exception()
-                                self.logger.error("A CalledProcessError Occurred")
+                                self.logger.exception("A CalledProcessError Occurred")
                                 old_from = command_dict['from']
                                 command_dict['from'] = command_dict['to']
                                 command_dict['to'] = old_from
@@ -388,3 +387,5 @@ class NodeClientProcess:
 
         except Exception as e:
             self.logger.exception("Error Processing For Node Client")
+
+            # FIXME: THIS CATCHES UNEXPECTED ERRORS. WE NEED TO GIVE BACK A RESPONSE HERE SO THINGS DON'T CRASH COMPLETELY

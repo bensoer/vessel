@@ -30,10 +30,6 @@ def generate_aes_key(password:str)->bytes:
 
     hash = libsha256.new()
     hash.update(bytes(password, 'utf-8'))
-
-    print("AEX HEX")
-    print(hash.hexdigest())
-    print("---------")
     return hash.digest()
 
 
@@ -70,11 +66,6 @@ def encrypt_bytes_with_public_key_to_base64_bytes(bytes_message:bytes, exported_
 
     public_key = RSA.import_key(exported_public_key)
     cipher_rsa = PKCS1_OAEP.new(public_key, hashAlgo=libsha256)
-
-
-    print("Encrypting The following Bytes")
-    print(bytes_message)
-    print("-------------------------------")
 
     encrypted_bytes_message = cipher_rsa.encrypt(bytes_message)
     base64_encoded_bytes = base64.b64encode(encrypted_bytes_message)
