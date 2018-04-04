@@ -1,12 +1,17 @@
 [DEFAULT]
-root_dir=C:\path\to\dir
+# root location of the project - this programs root location
+root_dir=C:\vessel
 
+# for a node configuration - specify the domain and port to connect to the master
 master_domain=master.someendpoint.com
 master_port=5026
+# the password to be used to secure private keys and generate AES passwords. A large and strong password is recommended
 private_key_password=mysecurepassword
 
 [LOGGING]
-log_dir=C:\path\to\dir
+# logging location including maximum file size and number of files to be kept. vessel will automatically remove old
+# logs when more files then the max_file_count have built up
+log_dir=C:\vessel\logs
 max_file_count=10
 max_file_size=8192
 
@@ -14,19 +19,23 @@ max_file_size=8192
 version=1.0.0
 
 [DATABASE]
-db_dir=C:\Users\Ben Soer\PycharmProjects\vessel\db
+# location of node or master database to be created in
+db_dir=C:\vessel\db
 
 [NODELISTENER]
-log_dir=C:\path\to\dir
+# master configuration - specify the logging location, port and ip to listen for incoming connections from nodes
+log_dir=C:\vessel\logs
 port=5026
 bind_ip=0.0.0.0
 
 [TERMINALLISTENER]
-log_dir=C:\path\to\dir
+# master configuration - specify the logging location, port and ip to listen for incoming terminal connections
+log_dir=C:\vessel\logs
 port=5025
 bind_ip=0.0.0.0
 
 [HTTPLISTENER]
-log_dir=C:\path\to\dir
+# master configuration - specify the logging location, port and ip to listen for incoming http requests
+log_dir=C:\vessel\logs
 port=5024
 bind_ip=0.0.0.0

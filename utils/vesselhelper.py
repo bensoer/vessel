@@ -112,11 +112,12 @@ def decrypt_base64_bytes_with_private_key_to_bytes(base64_cipher_bytes:bytes, ex
 def determine_engine_for_script(script_name):
 
     filetype2engine = {
-        'ps1': 'powershell.exe',
+        'ps1': 'powershell',
         'py': 'python',
-        'sql': 'sqlcmd',
-        'bat': '',
-        'exe': ''
+        'sql': 'sql',
+        'bat': 'batch',
+        'exe': 'exe',
+        'js': 'node'
     }
 
     file_type = script_name[script_name.rfind('.')+1:]

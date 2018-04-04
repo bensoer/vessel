@@ -3,6 +3,7 @@ import subprocess
 from subprocess import CalledProcessError
 import json
 from db.models.Script import Script
+import os
 
 
 def migrate(root_dir, sql_manager, request, logger):
@@ -11,7 +12,7 @@ def migrate(root_dir, sql_manager, request, logger):
     script = Script.fromDictionary(serialized_script)
     script.id = sql_manager.insertScript(script)
 
-    file_path = root_dir + "/scripts/" + script.file_name
+    file_path = root_dir + os.sep + "scripts" + os.sep + script.file_name
     fp = open(file_path, 'wb+')
     file_data = request['rawdata']
     fp.write(file_data)
@@ -26,6 +27,23 @@ def migrate(root_dir, sql_manager, request, logger):
 
     return request
 
+
+def _get_execute_params_for_engine(root_dir, script_engine, file_name):
+
+    absolute_file_path = root_dir + os.sep + "scripts" + os.sep + file_name
+
+    script_engine_to_params = {
+        'python': ['python', absolute_file_path],
+        'powershell': ['powershell.exe', '-ExecutionPolicy', 'RemoteSigned', '-F', absolute_file_path],
+        'batch': [absolute_file_path],
+        'node': ['node', absolute_file_path],
+        'exe': [absolute_file_path]
+    }
+
+    return script_engine_to_params.get(script_engine, [absolute_file_path])
+
+
+
 def execute_script_on_node(root_dir, sql_manager, request, logger):
     script_guid = request['rawdata'][1]
 
@@ -35,19 +53,11 @@ def execute_script_on_node(root_dir, sql_manager, request, logger):
         if script.guid == uuid.UUID(script_guid):
             script_found = True
             try:
-
+                script_execute_list = _get_execute_params_for_engine(root_dir, script.script_engine, script.file_name)
                 # execute the script
-                absolute_file_path = root_dir + "/scripts/" + script.file_name
-                process = None
-                if script.script_engine == "":
-                    process = subprocess.run([absolute_file_path], shell=True, check=True,
-                                             stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                                             encoding="utf-8")
-                else:
-                    process = subprocess.run([script.script_engine, absolute_file_path], shell=True,
-                                             check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                                             encoding="utf-8")
-
+                process = subprocess.run(script_execute_list, shell=True,
+                                         check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         encoding="utf-8")
                 process.check_returncode()  # will throw exception if execution failed
 
                 old_from = request['from']
