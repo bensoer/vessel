@@ -36,6 +36,9 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
         elif command['command'] == 'MIG':
             node_guid = command['rawdata'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+        elif command['command'] == 'CREATE':
+            node_guid = command['rawdata'][0]
+            send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
 
         # if the send fails or not of the IFs meet - then return an error back so the client can be informed
         if not send_success:
@@ -44,7 +47,7 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
             error_response['from'] = 'pipe_recv_handler'
             error_response['to'] = command['from']
             # (command, command_from, command_to, send_success)
-            error_response['param'] = (command['command'], command['from'], command['to'], send_success)
+            error_response['params'] = (command['command'], command['from'], command['to'], send_success)
             error_response['rawdata'] = "Send Of Message To Node Failed OR IF Condition To Parse node_guid failed"
             child_pipe.send(error_response)
 

@@ -30,6 +30,8 @@ class HttpListenerProcess:
 
     __connections = dict()
 
+    _use_ssl = False
+
     def __init__(self, initialization_tuple):
         child_pipe, config = initialization_tuple
 
@@ -41,6 +43,14 @@ class HttpListenerProcess:
         self._log_dir = config["HTTPLISTENER"]["log_dir"]
         self._root_dir = config["DEFAULT"]["root_dir"]
         self._vessel_version = config["META"]["version"]
+
+        if config["HTTPLISTENER"].get("ssl", "False") == "False":
+            self._use_ssl = False
+        else:
+            self._use_ssl = True
+
+        self._cert_path = config["DEFAULT"].get("cert_path", None)
+        self._key_path = config["DEFAULT"].get("key_path", None)
 
         self._private_key_password = config["DEFAULT"]["private_key_password"]
         log_path = self._log_dir + "/master-http.log"
@@ -84,7 +94,7 @@ class HttpListenerProcess:
             return jsonify(message=str(e)), 501
 
         @app.route('/api/ping', methods=['GET'])
-        def GETHelloWorld():
+        def GETPing():
 
             return jsonify({
                 'vessel-version': self._vessel_version,
@@ -117,6 +127,29 @@ class HttpListenerProcess:
             action['to'] = "MASTER"
             action['params'] = "SCAN.SCRIPTS"
             action['rawdata'] = ""
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                return GETAllScripts()
+
+        @app.route("/api/node/<node_guid>/script/scan", methods=['POST'])
+        def POSTScanForScriptsOnNode(node_guid):
+            self.logger.info("Scanning Node Of Guid " + node_guid + " For Scripts")
+
+            self._pipe_lock.acquire()
+            # now query to get the scripts
+            action = dict()
+            action['command'] = "EXEC"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "SCAN.SCRIPTS"
+            action['rawdata'] = (node_guid,)
 
             self.child_pipe.send(action)
 
@@ -214,9 +247,41 @@ class HttpListenerProcess:
                 response["script_guid"] = script_guid
                 response["node_guid"] = node_guid
                 response["node_execution_status"] = answer['param']
-                response["stdout"] = answer['rawdata'][0]
-                response["stderr"] = answer['rawdata'][1]
-                response["return_code"] = answer['rawdata'][2]
+                response["results"] = answer["rawdata"]
+
+                if answer["params"] == "FAILED.NOTFOUND":
+                    return jsonify(response), 404
+
+                return jsonify(response)
+
+        @app.route("/api/script/<script_guid>/execute", methods=['POST'])
+        def POSTExecuteScriptLocaly(script_guid):
+            self.logger.info("Executing Script Of Guid: " + script_guid + " Locally")
+
+            self._pipe_lock.acquire()
+
+            action = dict()
+            action['command'] = "EXEC"
+            action['from'] = "HTTP"
+            action['to'] = "MASTER"
+            action['params'] = "SCRIPTS.EXECUTE"
+            action['rawdata'] = (None, script_guid)
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                response = dict()
+                response["script_guid"] = script_guid
+                response["node_execution_status"] = answer['params']
+                response["results"] = answer['rawdata']
+
+                if answer['params'] == "FAILED.NOTFOUND":
+                    return jsonify(response), 404
 
                 return jsonify(response)
 
@@ -259,6 +324,128 @@ class HttpListenerProcess:
 
                 abort(404)
 
+        @app.route("/api/node/<node_guid>/deployment", methods=['GET'])
+        def GETAllDeploymentsOfNode(node_guid):
+            self.logger.info("Fetching Deployments On Node Of Guid: " + node_guid)
+
+            self._pipe_lock.acquire()
+            # now query to get the scripts
+            action = dict()
+            action['command'] = "GET"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "DEPLOYMENTS"
+            action['rawdata'] = node_guid
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                return jsonify(answer["rawdata"])
+
+        @app.route("/api/node/<node_guid>/deployment", methods=['POST'])
+        def POSTCreateDeploymentOfNode(node_guid):
+            deployment_name = request.json.get("deploymentName", None)
+            deployment_description = request.json.get("description", None)
+            deployment_script_guids = request.json.get("scriptGuids", None)
+
+            if deployment_name is None or deployment_description is None or deployment_script_guids is None:
+                abort(400)
+
+            for deployment_script_guid in deployment_script_guids:
+                if "priority" not in deployment_script_guid or "scriptGuid" not in deployment_script_guid:
+                    abort(400)
+
+            self._pipe_lock.acquire()
+            action = dict()
+            action['command'] = "CREATE"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "DEPLOYMENT"
+            action['rawdata'] = (node_guid, deployment_name, deployment_description, deployment_script_guids)
+
+            self.child_pipe.send(action)
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            elif answer['params'] == "SUCCESS":
+                deployment = answer['rawdata'][0]
+                scripts = answer['rawdata'][1]
+
+                response = dict()
+                response["deploymentName"] = deployment.name
+                response["description"] = deployment.description
+
+                script_list = list()
+                for script in scripts:
+                    script_dict = dict()
+                    script_dict["priority"] = script.priority
+                    script_dict["scriptGuid"] = script.guid
+
+                    script_list.append(script_dict)
+
+                response["deploymentScriptGuids"] = script_list
+
+                return jsonify(response)
+
+            elif answer['params'] == "FAILED":
+                # currently this only happens if the script doesn't exist on the node - so 404
+                return jsonify({'message': answer['rawdata']}), 404
+            else:
+                return jsonify(answer["rawdata"])
+
+        @app.route("/api/deployment/<deployment_guid>/node/<node_guid>/execute", methods=['POST'])
+        def POSTExecuteDeploymentOfNode(node_guid, deployment_guid):
+            self.logger.info("Executing Deployment Of Guid: " + deployment_guid + " On Node Of Guid: " + node_guid)
+
+            self._pipe_lock.acquire()
+
+            action = dict()
+            action['command'] = "EXEC"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "DEPLOYMENTS.EXECUTE"
+            action['rawdata'] = (node_guid, deployment_guid)
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+
+                response = dict()
+                response["deployment_guid"] = deployment_guid
+                response["node_guid"] = node_guid
+                response["node_execution_status"] = answer['params']
+                response["results"] = answer['rawdata']
+
+                if answer['params'] == "FAILED.NOTFOUND":
+                    return jsonify(response), 404
+
+                return jsonify(response)
+
+
         self.logger.info("Now Starting Flask Server")
-        app.run(debug=True, use_reloader=False, port=int(self._port), host=self._bind_ip)
+
+        if self._use_ssl:
+            self.logger.info("Use SSL Configuration Detected. Checking If Certificates Were Included")
+            if self._cert_path is not None and self._key_path is not None:
+                self.logger.info("Certificates Were Included. Starting Server With Them")
+                app.run(self._bind_ip, debug=False, port=int(self._port), ssl_context=(self._cert_path, self._key_path))
+            else:
+                self.logger.info("Certificates Were Not Included. Generating Own")
+                app.run(self._bind_ip, debug=False, port=int(self._port), ssl_context='adhoc')
+        else:
+            self.logger.info("No SSL Supplied. Building HTTP Server")
+            app.run(self._bind_ip, debug=False, port=int(self._port))
+
         self.logger.info("Flask Server Started. Call Complete")

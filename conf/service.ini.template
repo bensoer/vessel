@@ -8,6 +8,9 @@ master_port=5026
 # the password to be used to secure private keys and generate AES passwords. A large and strong password is recommended
 private_key_password=mysecurepassword
 
+# supports multiple paths seperated by semi-colons (C:\location\one;C:\location\two)
+scripts_dir=C:\vessel\scripts
+
 [LOGGING]
 # logging location including maximum file size and number of files to be kept. vessel will automatically remove old
 # logs when more files then the max_file_count have built up
@@ -39,3 +42,9 @@ bind_ip=0.0.0.0
 log_dir=C:\vessel\logs
 port=5024
 bind_ip=0.0.0.0
+
+#server the http server over ssl
+ssl=True
+#if not cert or key given - app will generate its own self-signed cert
+#cert_path="C:\mycert.crt"
+#key_path="C:\mykey.key"

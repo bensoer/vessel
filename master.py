@@ -9,13 +9,12 @@ import logging
 from multiprocessing import Process, Pipe
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-from utils.node_listener_process import NodeListenerProcess
-from utils.terminal_listener_process import TerminalListenerProcess
-from utils.http_listener_process import HttpListenerProcess
-import utils.vesselhelper as vh
-from db.models.Script import Script
+from proc.node_listener_process import NodeListenerProcess
+from proc.terminal_listener_process import TerminalListenerProcess
+from proc.http_listener_process import HttpListenerProcess
 import threading
-import json
+import utils.taskrunner as taskrunner
+import utils.script_manager as sm
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
@@ -32,7 +31,6 @@ def pipe_recv_handler(master_process, parent_pipe):
         message_for = command["to"]
 
         if message_for == "NODE":
-            master_process._logger.info("Message Is For NODE. Forwarding To Node Process")
             master_process.sendMessageToNodeProcess(command)
         elif message_for == "TERMINAL":
             master_process.sendMessageToTerminalProcess(command)
@@ -56,6 +54,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     _log_dir = None
     _root_dir = None
     _role = None
+    _script_dir = None
 
     _node_process = None
     _terminal_process = None
@@ -70,10 +69,13 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
 
         self._config.read(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-                          + '/conf/service.ini')
+                          + os.sep + 'conf' + os.sep + 'service.ini')
 
         self._log_dir = self._config["LOGGING"]["log_dir"]
         self._root_dir = self._config["DEFAULT"]["root_dir"]
+        self._script_dir = self._config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
+
+
         log_path = self._log_dir + "/master-service.log"
 
         self._logger = logging.getLogger(self._svc_name_)
@@ -112,30 +114,15 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
 
             return command
 
-    def catalogue_local_scripts(self, sqlite_manager):
-        self._logger.info("Searching For New Scripts On The System")
-        known_scripts = sqlite_manager.getAllScripts()
-        script_files = os.listdir(self._root_dir + "/scripts")
-        for script_file in script_files:
-            if len([known_script for known_script in known_scripts if known_script.file_name == script_file]) == 0:
-                # this script is not known
-                engine_name = vh.determine_engine_for_script(script_file)
+        if command['command'] == "EXEC" and command['params'] == "SCRIPTS.EXECUTE":
 
-                if engine_name is None:
-                    self._logger.error("Could Not Determine Appropriate Engine For Script: " + str(script_file)
-                                       + " Script Will Not Be Catalogued")
-                    continue
+            sqlite_manager = SQLiteManager(self._config, self._logger)
+            response = taskrunner.execute_script_on_node(self._root_dir, sqlite_manager, command, self.logger)
+            sqlite_manager.closeEverything()
 
-                script = Script()
-                script.file_name = script_file
-                script.script_engine = engine_name
-                sqlite_manager.insertScript(script)
+            return response
 
-        self._logger.info("Removing Record Entries For Scripts No Longer On The System")
-        for known_script in known_scripts:
-            if len([script_file for script_file in script_files if script_file == known_script.file_name]) == 0:
-                # this script doesn't exist in the file system
-                sqlite_manager.deleteScriptOfId(known_script.id)
+
 
 
     def main(self):
@@ -149,8 +136,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
 
         # catalogue all the scripts in the system
         self._logger.info("Catalogueing Scripts On The System")
-        #sqlite_manager.deleteAllScripts()
-        self.catalogue_local_scripts(sqlite_manager)
+        sm.catalogue_local_scripts(sqlite_manager, self._script_dir, self._logger)
 
         # create process for listening for terminal connections
         try:

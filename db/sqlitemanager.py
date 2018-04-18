@@ -3,6 +3,8 @@ import uuid
 from db.models.Key import Key
 from db.models.Script import Script
 from db.models.Node import Node
+from db.models.Deployment import Deployment
+from db.models.DeploymentScript import DeploymentScript
 
 class SQLiteManager:
 
@@ -29,6 +31,12 @@ class SQLiteManager:
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS  scripts
                           (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, file_name TEXT, script_engine TEXT)''')
+
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS deployments
+                            (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, description TEXT)''')
+
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS deployment_scripts
+                            (id INTEGER PRIMARY KEY, guid TEXT, deployment INTEGER, script INTEGER, priority INTEGER)''')
 
         self._conn.commit()
 
@@ -226,6 +234,25 @@ class SQLiteManager:
         self._cursor.execute(query)
         self._conn.commit()
 
+    def getScriptOfGuid(self, script_guid):
+        query = "SELECT id, guid, file_name, script_engine FROM scripts WHERE guid = '" + str(script_guid) + "'"
+
+        self._logger.info("Getting Script Of Guid: " + str(script_guid))
+        self._cursor.execute(query)
+        script = self._cursor.fetchone()
+
+        if script is None:
+            return None
+
+        script_model = Script()
+        script_model.id = script[0]
+        script_model.guid = uuid.UUID(script[1])
+        script_model.file_name = script[2]
+        script_model.script_engine = script[3]
+
+        return script_model
+
+
     def getScriptOfId(self, script_id):
 
         query = "SELECT id, guid, file_name, script_engine FROM scripts WHERE id = " + str(script_id) + ""
@@ -275,3 +302,141 @@ class SQLiteManager:
         self._conn.commit()
 
         return self.getScriptOfId(int(script_id))
+
+    def getDeploymentOfId(self, deployment_id):
+        query = "SELECT id, guid, name, description FROM deployments WHERE id = " + str(deployment_id) + ""
+
+        self._logger.info("Getting Deployment Of ID: " + str(deployment_id))
+        self._cursor.execute(query)
+        deployment = self._cursor.fetchone()
+
+        if deployment is None:
+            return None
+
+        deployment_model = Deployment()
+        deployment_model.description = deployment[3]
+        deployment_model.guid = uuid.UUID(deployment[1])
+        deployment_model.name = deployment[2]
+        deployment_model.id = deployment[0]
+
+        return deployment_model
+
+    def getDeploymentOfGuid(self, deployment_guid):
+        query = "SELECT id, guid, name, description FROM deployments WHERE guid = '{deployment_guid}'"
+        query = query.format(deployment_guid=deployment_guid)
+
+        self._logger.info("Getting Deployment Of Guid: " + str(deployment_guid))
+        self._cursor.execute(query)
+        deployment = self._cursor.fetchone()
+
+        if deployment is None:
+            return None
+
+        deployment_model = Deployment()
+        deployment_model.description = deployment[3]
+        deployment_model.guid = uuid.UUID(deployment[1])
+        deployment_model.name = deployment[2]
+        deployment_model.id = deployment[0]
+
+        return deployment_model
+
+    def getAllDeployments(self):
+        query = "SELECT id, guid, name, description FROM deployments"
+
+        self._logger.info("Getting All Deployments")
+        self._cursor.execute(query)
+        deployments = self._cursor.fetchall()
+
+        deployment_models = list()
+        for deployment in deployments:
+
+            deployment_model = Deployment()
+            deployment_model.id = deployment[0]
+            deployment_model.guid = uuid.UUID(deployment[1])
+            deployment_model.name = deployment[2]
+            deployment_model.description = deployment[3]
+
+            deployment_models.append(deployment)
+
+        return deployment_models
+
+    def insertDeployment(self, deployment):
+        guid = deployment.guid
+        if deployment.guid == None:
+            guid == uuid.uuid4()
+
+        name = deployment.name
+        description = deployment.description
+
+        query = "INSERT INTO deployments(guid, name, description VALUES('{guid}', '{name}', '{description}')"
+        query = query.format(guid=str(guid), name=name, description=description)
+
+        self._logger.info("Inserting Deployment")
+        self._cursor.execute(query)
+        deployment_id = self._cursor.lastrowid
+        self._conn.commit()
+
+        return self.getDeploymentOfId(int(deployment_id))
+
+    def getDeploymentScriptOfId(self, deployment_script_id):
+        query = "SELECT id, guid, deployment, script FROM deployment_scripts WHERE id = " + str(deployment_script_id) + ""
+
+        self._logger.info("Getting Deployment Script Of ID: " + str(deployment_script_id))
+        self._cursor.execute(query)
+        deployment_script = self._cursor.fetchone()
+
+        if deployment_script is None:
+            return None
+
+        deployment_script_model = DeploymentScript()
+        deployment_script_model.id = deployment_script[0]
+        deployment_script_model.guid = deployment_script[1]
+        deployment_script_model.deployment = deployment_script[2]
+        deployment_script_model.script = deployment_script[3]
+
+        return deployment_script_model
+
+
+    def insertDeploymentScript(self, deploymentScript):
+        guid = deploymentScript.guid
+        if deploymentScript.guid == None:
+            guid = uuid.uuid4()
+
+        deployment = deploymentScript.deployment
+        script = deploymentScript.script
+        priority = deploymentScript.priority
+
+        query = "INSERT INTO deployment_scripts(guid, deploymnet, script, priority) VALUES({guid}, {deployment}, {script}, {priority})"
+        query = query.format(guid=str(guid), deployment=deployment, script=script, priority=priority)
+
+        self._logger.info("Inserting Deployment Script")
+        self._cursor.execute(query)
+        deployment_script_id = self._cursor.lastrowid
+        self._conn.commit()
+
+        return self.getDeploymentScriptOfId(int(deployment_script_id))
+
+
+    def getScriptsOfDeploymentGuid(self, deployment_guid):
+        query = "SELECT s.id, s.guid, s.file_name, s.script_engine" \
+                "FROM deployments d JOIN deployment_scripts ds ON d.id = ds.deployment JOIN scripts s ON s.id = ds.script" \
+                "ORDER BY ds.priority DESC" \
+                "WHERE d.guid = {deployment_guid}"
+
+        query = query.format(deployment_guid=str(deployment_guid))
+        self._logger.info("Getting Scripts Of Deployment Guid: " + str(deployment_guid))
+        self._cursor.execute(query)
+        scripts = self._cursor.fetchall()
+
+        script_models = list()
+        for script in scripts:
+
+            script_model = Script()
+            script_model.id = script[0]
+            script_model.guid = uuid.UUID(script[1])
+            script_model.file_name = script[2]
+            script_model.script_engine = script[3]
+
+            script_models.append(script_model)
+
+        return script_models

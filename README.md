@@ -69,7 +69,9 @@ handle this automatically.
 ## Security
 Obviously, communication between nodes and masters will likely contain sensitive data. To securely transfer data
 between points, RSA and AES are both used - RSA to transfer the AES key from the node to the master, and then AES from
-then onwards. Each node generates its own AES key and upon connecting is passed from the master its public RSA key.
+then onwards. Each node generates its own AES key. On successful connection to the master, the master node sends its
+public RSA key. The node then uses this to encrypt its AES key and send it to the master. The master then decrypts this
+and further communication continues with the AES key.
 
 In order to avoid issues with data in transit, all data is also Base64 encoded before sent over the internet to avoid
 read and write issues on the end systems.
@@ -78,3 +80,6 @@ read and write issues on the end systems.
 ## Resources
 Install Python Non-Interactively:
 https://www.python.org/download/releases/2.5/msi/
+
+## TODO
+- Documentation on the various types of commands so that patterns can be established

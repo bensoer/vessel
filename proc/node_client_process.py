@@ -259,6 +259,42 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "CREATE" and command_dict["params"] == "DEPLOYMENT":
+                        self.logger.info("Create Deployment Request Detected. Executing")
+
+                        response = taskrunner.create_deployment(self._sql_manager, command_dict, self.logger)
+
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
+                    elif command_dict["command"] == "GET" and command_dict["params"] == "DEPLOYMENTS":
+                        self.logger.info("Fetch Node Deployments Request Detected. Executing")
+
+                        response = taskrunner.fetch_node_deployments(self._sql_manager, command_dict, self.logger)
+
+                        self.logger.info("Fetched Data. Now Serializing For response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
+                    elif command_dict["command"] == "EXEC" and command_dict["params"] == "DEPLOYMENTS.EXECUTE":
+                        self.logger.info("Executing Deployment On Node Request Detected. Executing")
+
+                        response = taskrunner.execute_deployment_on_node(self._root_dir, self._sql_manager, command_dict, self.logger)
+
+                        self.logger.info("Fetched Data. Now Serializing For response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
                         self.logger.info("Executing Script On Node Request Detected. Executing")
 
@@ -288,7 +324,7 @@ class NodeClientProcess:
                         error_response['command'] = 'ERROR'
                         error_response['from'] = 'node_client'
                         error_response['to'] = command['from']
-                        error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
+                        error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
                                                   " To: " + command['to']
                         error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
 
@@ -303,7 +339,7 @@ class NodeClientProcess:
                     error_response['command'] = 'ERROR'
                     error_response['from'] = 'node_client'
                     error_response['to'] = command['from']
-                    error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
+                    error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
                                               " To: " + command['to']
                     error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
@@ -321,7 +357,7 @@ class NodeClientProcess:
             error_response['command'] = 'ERROR'
             error_response['from'] = 'node_client'
             error_response['to'] = command['from']
-            error_response['param'] = "Command: " + command['command'] + " From: " + command['from'] + \
+            error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
                                       " To: " + command['to']
             error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
                                                                         "This Event Or Is In A Broken State. Restart " \

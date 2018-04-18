@@ -9,9 +9,8 @@ import logging
 from multiprocessing import Process, Pipe
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-from utils.node_client_process import NodeClientProcess
-from db.models.Script import Script
-import utils.vesselhelper as vh
+from proc.node_client_process import NodeClientProcess
+import utils.script_manager as sm
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
@@ -29,6 +28,7 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
     _role = None
 
     _node_process = None
+    _script_dir = None
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
@@ -40,6 +40,8 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         self._log_dir = self._config["LOGGING"]["log_dir"]
         self._root_dir = self._config["DEFAULT"]["root_dir"]
         log_path = self._log_dir + "/node-service.log"
+
+        self._script_dir = self._config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
         self._logger = logging.getLogger(self._svc_name_)
         self._logger.setLevel(logging.DEBUG)
@@ -63,6 +65,7 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         self._logger.info("Service Is Starting")
         self.main()
 
+
     def main(self):
 
         self._logger.info("Service Is Initializing...")
@@ -72,33 +75,12 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
 
         # catalogue all the scripts in the system
         self._logger.info("Catalogueing Scripts On The System")
-        known_scripts = sqlite_manager.getAllScripts()
-        script_files = os.listdir(self._root_dir + "/scripts")
-        for script_file in script_files:
-            if len([known_script for known_script in known_scripts if known_script.file_name == script_file]) == 0:
-                # this script is not known
-                engine_name = vh.determine_engine_for_script(script_file)
-
-                if engine_name is None:
-                    self._logger.error("Could Not Determine Appropriate Engine For Script: " + str(script_file)
-                                       + " Script Will Not Be Catalogued")
-                    continue
-
-                script = Script()
-                script.file_name = script_file
-                script.script_engine = engine_name
-                sqlite_manager.insertScript(script)
-
-        self._logger.info("Removing Record Entries For Scripts No Longer On The System")
-        for known_script in known_scripts:
-            if len([script_file for script_file in script_files if script_file == known_script.file_name]) == 0:
-                # this script doesn't exist in the file system
-                sqlite_manager.deleteScriptOfId(known_script.id)
+        sm.catalogue_local_scripts(sqlite_manager, self._script_dir, self._logger)
 
         # create process for listening for node connections
         #  READ through parent_pipe, WRITE through child_pipe
         try:
-            self._logger.info("Now Creaitng Pipe")
+            self._logger.info("Now Creating Pipe")
             parent_pipe, child_pipe = Pipe()
             self._logger.info("Now Creating NodeClientProcess Class")
             # node_listener = NodeListenerProcess(to_parent_pipe, to_child_pipe, self._config)
