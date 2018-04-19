@@ -17,7 +17,8 @@ import json
 
 class HttpListenerProcess:
 
-    _sql_manager = None
+    #_sql_manager = None
+    _config = None
     child_pipe = None
     _port = None
     logger = None
@@ -38,6 +39,7 @@ class HttpListenerProcess:
         self.child_pipe = child_pipe
         self._pipe_lock = Lock()
 
+        self._config = config
         self._port = config["HTTPLISTENER"]["port"]
         self._bind_ip = config["HTTPLISTENER"]["bind_ip"]
         self._log_dir = config["HTTPLISTENER"]["log_dir"]
@@ -66,7 +68,7 @@ class HttpListenerProcess:
 
         self.logger.info("HttpListenerProcess Initialized. Creating Connection To SQL DB")
 
-        self._sql_manager = SQLiteManager(config, self.logger)
+        #self._sql_manager = SQLiteManager(config, self.logger)
 
         self.logger.info("Connection Complete")
 
@@ -106,14 +108,16 @@ class HttpListenerProcess:
         def GETAllScripts():
             self.logger.info("Fetching All Scripts")
 
-            all_scripts = self._sql_manager.getAllScripts()
+            sql_manager = SQLiteManager(self._config, self.logger)
+            all_scripts = sql_manager.getAllScripts()
 
             all_scripts_as_dictionaries = list()
             for script in all_scripts:
                 dict_script = script.toDictionary()
-                del dict_script["file_path"]
+                dict_script.pop("file_path", None)
                 all_scripts_as_dictionaries.append(dict_script)
 
+            sql_manager.closeEverything()
             return jsonify(all_scripts_as_dictionaries)
 
         @app.route("/api/script/scan", methods=['POST'])
@@ -167,27 +171,33 @@ class HttpListenerProcess:
             self.logger.info("Fetching Script Of Guid: " + script_guid)
             uuid_script_guid = uuid.UUID(script_guid)
 
-            all_scripts = self._sql_manager.getAllScripts()
+            sql_manager = SQLiteManager(self._config, self.logger)
+            all_scripts = sql_manager.getAllScripts()
             for script in all_scripts:
                 if script.guid == uuid_script_guid:
                     script_dict = script.toDictionary()
-                    del script_dict["file_path"]
+                    script_dict.pop("file_path", None)
+
+                    sql_manager.closeEverything()
                     return jsonify(script_dict)
 
+            sql_manager.closeEverything()
             return abort(404)
 
         @app.route("/api/node", methods=['GET'])
         def GETAllNodes():
             self.logger.info("Fetching All Nodes")
 
-            all_nodes = self._sql_manager.getAllNodes()
+            sql_manager = SQLiteManager(self._config, self.logger)
+            all_nodes = sql_manager.getAllNodes()
 
             all_nodes_as_dictionaries = list()
             for node in all_nodes:
                 dict_node = node.toDictionary()
-                del dict_node["ip"]
+                dict_node.pop("ip", None)
                 all_nodes_as_dictionaries.append(dict_node)
 
+            sql_manager.closeEverything()
             return jsonify(all_nodes_as_dictionaries)
 
         @app.route("/api/node/<node_guid>", methods=['GET'])
@@ -195,13 +205,17 @@ class HttpListenerProcess:
             self.logger.info("Fetching Node Of Guid: " + node_guid)
             uuid_node_guid = uuid.UUID(node_guid)
 
-            all_nodes = self._sql_manager.getAllNodes()
+            sql_manager = SQLiteManager(self._config, self.logger)
+            all_nodes = sql_manager.getAllNodes()
             for node in all_nodes:
                 if node.guid == uuid_node_guid:
                     node_dict = node.toDictionary()
-                    del node_dict["ip"]
+                    node_dict.pop("ip", None)
+
+                    sql_manager.closeEverything()
                     return jsonify(node_dict)
 
+            sql_manager.closeEverything()
             return abort(404)
 
         @app.route("/api/node/<node_guid>/script", methods=['GET'])
@@ -299,7 +313,8 @@ class HttpListenerProcess:
 
                 self.logger.info("Migrating Script Of Guid: " + script_guid + " To Node Of Guid: " + node_guid)
 
-                all_scripts = self._sql_manager.getAllScripts()
+                sql_manager = SQLiteManager(self._config, self.logger)
+                all_scripts = sql_manager.getAllScripts()
                 for script in all_scripts:
                     if script.guid == uuid.UUID(script_guid):
 
@@ -323,11 +338,13 @@ class HttpListenerProcess:
 
                         answer = self.child_pipe.recv()
 
+                        sql_manager.closeEverything()
                         if answer['command'] == "ERROR":
                             return handle_internal_error(answer)
                         else:
                             return jsonify(answer)
 
+                sql_manager.closeEverything()
                 abort(404)
 
         @app.route("/api/node/<node_guid>/deployment", methods=['GET'])
