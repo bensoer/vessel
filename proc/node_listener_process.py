@@ -278,6 +278,19 @@ class NodeListenerProcess:
                 #get the encrypted aes key
                 aes_key_encrypted = node_socket.recv(4096)
 
+                # verify this key is valid
+                try:
+                    aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
+                                                                                self.master_private_key,
+                                                                                self.private_key_password)
+                    decoded = aes_key_encrypted.decode('utf-8')
+                except:
+                    self.logger.exception("Incoming AES Key Is Invalid Or Failed Validation. Assuming Connection"
+                                          "Is Invalid. Closing Connection")
+                    node_socket.close()
+                    continue
+
+
                 self.logging_queue.put("Adding Key To DB")
                 # add the key to our db
                 key = Key()
