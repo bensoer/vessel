@@ -122,7 +122,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
 
             return response
 
-
+        if command['command'] == "GET" and command['params'] == "PING":
+            return taskrunner.get_ping_info(command)
 
 
     def main(self):

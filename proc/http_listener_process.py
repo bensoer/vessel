@@ -44,7 +44,7 @@ class HttpListenerProcess:
         self._bind_ip = config["HTTPLISTENER"]["bind_ip"]
         self._log_dir = config["HTTPLISTENER"]["log_dir"]
         self._root_dir = config["DEFAULT"]["root_dir"]
-        self._vessel_version = config["META"]["version"]
+        #self._vessel_version = config["META"]["version"]
 
         if config["HTTPLISTENER"].get("ssl", "False") == "False":
             self._use_ssl = False
@@ -97,12 +97,47 @@ class HttpListenerProcess:
 
         @app.route('/api/ping', methods=['GET'])
         def GETPing():
+            self.logger.info("Pinging Self")
 
-            return jsonify({
-                'vessel-version': self._vessel_version,
-                'python-version': platform.python_version(),
-                'python-compiler': platform.python_compiler()
-            })
+            self._pipe_lock.acquire()
+            action = dict()
+            action['command'] = "GET"
+            action['from'] = "HTTP"
+            action['to'] = "MASTER"
+            action['params'] = "PING"
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                return jsonify(answer['rawdata'])
+
+        @app.route('/api/node/<node_guid>/ping', methods=['GET'])
+        def GETPingOfNode(node_guid):
+            self.logger.info("Pinging Node Of Guid: " + node_guid)
+
+            self._pipe_lock.acquire()
+            action = dict()
+            action['command'] = "GET"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "PING"
+            action['rawdata'] = node_guid
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+                return jsonify(answer['rawdata'])
+
 
         @app.route("/api/script", methods=['GET'])
         def GETAllScripts():

@@ -6,7 +6,11 @@ from db.models.Script import Script
 from db.models.Deployment import Deployment
 from db.models.DeploymentScript import DeploymentScript
 import os
+import platform
+import pip
 
+# THIS IS THE APP WIDE GLOBAL
+vessel_version = "1.0.0"
 
 def migrate(root_dir, sql_manager, request, logger):
 
@@ -27,6 +31,23 @@ def migrate(root_dir, sql_manager, request, logger):
     request['to'] = old_from
     request['params'] = "SUCCESS"
     request['rawdata'] = script
+
+    return request
+
+def get_ping_info(request):
+
+    old_from = request['from']
+    request['from'] = request['to']
+    request['to'] = old_from
+
+    ping_info = dict()
+    ping_info["vessel-version"] = vessel_version
+    ping_info["python-version"] = platform.python_version()
+    ping_info["python-compiler"] = platform.python_compiler()
+    ping_info["operating-system"] = platform.platform()
+    ping_info["packages"] = sorted(["%s==%s" % (i.key, i.version) for i in pip.get_installed_distributions()])
+
+    request["rawdata"] = ping_info
 
     return request
 

@@ -269,6 +269,18 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "GET" and command_dict["params"] == "PING":
+                        self.logger.info("Get Ping Request Detected. Executing")
+
+                        response = taskrunner.get_ping_info(command_dict)
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
+
                     elif command_dict["command"] == "CREATE" and command_dict["params"] == "DEPLOYMENT":
                         self.logger.info("Create Deployment Request Detected. Executing")
 
