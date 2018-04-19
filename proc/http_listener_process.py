@@ -111,6 +111,7 @@ class HttpListenerProcess:
             all_scripts_as_dictionaries = list()
             for script in all_scripts:
                 dict_script = script.toDictionary()
+                del dict_script["file_path"]
                 all_scripts_as_dictionaries.append(dict_script)
 
             return jsonify(all_scripts_as_dictionaries)
@@ -169,7 +170,9 @@ class HttpListenerProcess:
             all_scripts = self._sql_manager.getAllScripts()
             for script in all_scripts:
                 if script.guid == uuid_script_guid:
-                    return jsonify(script.toDictionary())
+                    script_dict = script.toDictionary()
+                    del script_dict["file_path"]
+                    return jsonify(script_dict)
 
             return abort(404)
 
@@ -182,6 +185,7 @@ class HttpListenerProcess:
             all_nodes_as_dictionaries = list()
             for node in all_nodes:
                 dict_node = node.toDictionary()
+                del dict_node["ip"]
                 all_nodes_as_dictionaries.append(dict_node)
 
             return jsonify(all_nodes_as_dictionaries)
@@ -194,7 +198,9 @@ class HttpListenerProcess:
             all_nodes = self._sql_manager.getAllNodes()
             for node in all_nodes:
                 if node.guid == uuid_node_guid:
-                    return jsonify(node.toDictionary())
+                    node_dict = node.toDictionary()
+                    del node_dict["ip"]
+                    return jsonify(node_dict)
 
             return abort(404)
 
@@ -440,12 +446,14 @@ class HttpListenerProcess:
             self.logger.info("Use SSL Configuration Detected. Checking If Certificates Were Included")
             if self._cert_path is not None and self._key_path is not None:
                 self.logger.info("Certificates Were Included. Starting Server With Them")
-                app.run(self._bind_ip, debug=False, port=int(self._port), ssl_context=(self._cert_path, self._key_path))
+                app.run(self._bind_ip, debug=False, port=int(self._port), threaded=True,
+                        ssl_context=(self._cert_path, self._key_path))
             else:
                 self.logger.info("Certificates Were Not Included. Generating Own")
-                app.run(self._bind_ip, debug=False, port=int(self._port), ssl_context='adhoc')
+                app.run(self._bind_ip, debug=False, port=int(self._port), threaded=True,
+                        ssl_context='adhoc')
         else:
             self.logger.info("No SSL Supplied. Building HTTP Server")
-            app.run(self._bind_ip, debug=False, port=int(self._port))
+            app.run(self._bind_ip, debug=False, port=int(self._port), threaded=True)
 
         self.logger.info("Flask Server Started. Call Complete")

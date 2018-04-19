@@ -24,6 +24,8 @@ class NodeClientProcess:
 
     _client_socket = None
 
+    failed_initializing = False
+
     def __init__(self, initialization_tuple):
         child_pipe, config = initialization_tuple
 
@@ -209,8 +211,16 @@ class NodeClientProcess:
             self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
 
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((self._master_host, int(self._master_port)))
+            try:
+                address_results = getaddrinfo(self._master_host, int(self._master_port))
+                self._master_host = address_results[0][4][0]
+
+                self._client_socket = socket(AF_INET, SOCK_STREAM)
+                self._client_socket.connect((self._master_host, int(self._master_port)))
+            except:
+                self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
+                self.failed_initializing = True
+                return
 
             self.logger.info("Connection Established With Master. Securing Connection With Keys")
 
