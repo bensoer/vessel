@@ -3,6 +3,7 @@ from db.models.Script import Script
 
 
 def catalogue_path(path, known_scripts, sqlite_manager, logger):
+    logger.info("Cataloguing At Root Path : " + path)
 
     script_files = os.listdir(path)
 
@@ -12,7 +13,7 @@ def catalogue_path(path, known_scripts, sqlite_manager, logger):
 
         if os.path.isdir(new_path):
             logger.info("This Path Is A Dir. Recursing...")
-            catalogue_path(new_path, known_scripts, sqlite_manager)
+            catalogue_path(new_path, known_scripts, sqlite_manager, logger)
         else:
             if len([known_script for known_script in known_scripts if known_script.file_name == script_file]) == 0:
                 # this script is not known
@@ -26,13 +27,8 @@ def catalogue_path(path, known_scripts, sqlite_manager, logger):
                 script = Script()
                 script.file_name = script_file
                 script.script_engine = engine_name
+                script.file_path = path
                 sqlite_manager.insertScript(script)
-
-    logger.info("Removing Record Entries For Scripts No Longer On The System")
-    for known_script in known_scripts:
-        if len([script_file for script_file in script_files if script_file == known_script.file_name]) == 0:
-            # this script doesn't exist in the file system
-            sqlite_manager.deleteScriptOfId(known_script.id)
 
 
 def catalogue_local_scripts(sqlite_manager, script_dir, logger):
@@ -47,6 +43,14 @@ def catalogue_local_scripts(sqlite_manager, script_dir, logger):
         if path != "":  # happens if the user leaves a trailing semi-colon
             logger.info("Path Is Valid: >" + path + "<")
             catalogue_path(path, known_scripts, sqlite_manager, logger)
+
+    # FIXME: Need to be able to remove files not on the file system!
+
+    #logger.info("Removing Record Entries For Scripts No Longer On The System")
+    #for known_script in known_scripts:
+    #    if len([script_file for script_file in script_files if script_file == known_script.file_name]) == 0:
+    #        # this script doesn't exist in the file system
+    #        sqlite_manager.deleteScriptOfId(known_script.id)
 
 
 def determine_engine_for_script(script_name):

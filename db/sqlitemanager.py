@@ -30,7 +30,7 @@ class SQLiteManager:
                         (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, ip TEXT, port TEXT, key_guid TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS  scripts
-                          (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, file_name TEXT, script_engine TEXT)''')
+                          (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, file_path TEXT, file_name TEXT, script_engine TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS deployments
                             (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, description TEXT)''')
@@ -210,7 +210,7 @@ class SQLiteManager:
         return self.getKeyOfId(int(key_id))
 
     def getAllScripts(self):
-        query = "SELECT id, guid, file_name, script_engine, node_guid FROM scripts"
+        query = "SELECT id, guid, file_name, script_engine, node_guid, file_path FROM scripts"
 
         self._logger.info("Getting All Scripts")
         self._cursor.execute(query)
@@ -223,6 +223,7 @@ class SQLiteManager:
             script_model.file_name = script[2]
             script_model.script_engine = script[3]
             script_model.node_guid = script[4]
+            script_model.file_path = script[5]
             all_scripts.append(script_model)
 
         return all_scripts
@@ -235,7 +236,7 @@ class SQLiteManager:
         self._conn.commit()
 
     def getScriptOfGuid(self, script_guid):
-        query = "SELECT id, guid, file_name, script_engine FROM scripts WHERE guid = '" + str(script_guid) + "'"
+        query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE guid = '" + str(script_guid) + "'"
 
         self._logger.info("Getting Script Of Guid: " + str(script_guid))
         self._cursor.execute(query)
@@ -249,13 +250,14 @@ class SQLiteManager:
         script_model.guid = uuid.UUID(script[1])
         script_model.file_name = script[2]
         script_model.script_engine = script[3]
+        script_model.file_path = script[4]
 
         return script_model
 
 
     def getScriptOfId(self, script_id):
 
-        query = "SELECT id, guid, file_name, script_engine FROM scripts WHERE id = " + str(script_id) + ""
+        query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE id = " + str(script_id) + ""
 
         self._logger.info("Getting Script Of ID: " + str(script_id))
         self._cursor.execute(query)
@@ -271,6 +273,7 @@ class SQLiteManager:
         script_model.guid = uuid.UUID(script[1])
         script_model.file_name = script[2]
         script_model.script_engine = script[3]
+        script_model.file_path = script[4]
 
         return script_model
 
@@ -291,9 +294,10 @@ class SQLiteManager:
 
         file_name = script.file_name
         script_engine = script.script_engine
+        file_path = script.file_path
 
-        query = "INSERT INTO scripts (guid, file_name, script_engine) VALUES ('{guid}', '{file_name}', '{script_engine}')"
-        query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine)
+        query = "INSERT INTO scripts (guid, file_name, script_engine, file_path) VALUES ('{guid}', '{file_name}', '{script_engine}', '{file_path}')"
+        query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine, file_path=file_path)
 
         self._logger.info("Inserting Script")
         self._cursor.execute(query)
@@ -418,7 +422,7 @@ class SQLiteManager:
 
 
     def getScriptsOfDeploymentGuid(self, deployment_guid):
-        query = "SELECT s.id, s.guid, s.file_name, s.script_engine" \
+        query = "SELECT s.id, s.guid, s.file_name, s.script_engine, s.file_path" \
                 "FROM deployments d JOIN deployment_scripts ds ON d.id = ds.deployment JOIN scripts s ON s.id = ds.script" \
                 "ORDER BY ds.priority DESC" \
                 "WHERE d.guid = {deployment_guid}"
@@ -436,6 +440,7 @@ class SQLiteManager:
             script_model.guid = uuid.UUID(script[1])
             script_model.file_name = script[2]
             script_model.script_engine = script[3]
+            script_model.file_path = script[4]
 
             script_models.append(script_model)
 

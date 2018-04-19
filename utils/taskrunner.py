@@ -12,6 +12,7 @@ def migrate(root_dir, sql_manager, request, logger):
 
     node_guid, serialized_script = request['params']
     script = Script.fromDictionary(serialized_script)
+    script.file_path = root_dir + os.sep + "scripts"  # set the path to the new dir location
     script.id = sql_manager.insertScript(script)
 
     file_path = root_dir + os.sep + "scripts" + os.sep + script.file_name
@@ -30,9 +31,9 @@ def migrate(root_dir, sql_manager, request, logger):
     return request
 
 
-def _get_execute_params_for_engine(root_dir, script_engine, file_name):
+def _get_execute_params_for_engine(script_engine, file_path, file_name):
 
-    absolute_file_path = root_dir + os.sep + "scripts" + os.sep + file_name
+    absolute_file_path = file_path + os.sep + file_name
 
     script_engine_to_params = {
         'python': ['python', absolute_file_path],
@@ -44,10 +45,10 @@ def _get_execute_params_for_engine(root_dir, script_engine, file_name):
 
     return script_engine_to_params.get(script_engine, [absolute_file_path])
 
-def execute_script(root_dir, script, logger):
+def execute_script(script, logger):
 
     try:
-        script_execute_list = _get_execute_params_for_engine(root_dir, script.script_engine, script.file_name)
+        script_execute_list = _get_execute_params_for_engine(script.script_engine, script.file_path, script.file_name)
         # execute the script
         process = subprocess.run(script_execute_list, shell=True,
                                  check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -93,7 +94,7 @@ def execute_script(root_dir, script, logger):
         return (False, rawdata)
 
 
-def execute_script_on_node(root_dir, sql_manager, request, logger):
+def execute_script_on_node(sql_manager, request, logger):
     script_guid = request['rawdata'][1]
 
     all_scripts = sql_manager.getAllScripts()
@@ -101,7 +102,7 @@ def execute_script_on_node(root_dir, sql_manager, request, logger):
     for script in all_scripts:
         if script.guid == uuid.UUID(script_guid):
 
-            succesful, results_data = execute_script(root_dir, script, logger)
+            succesful, results_data = execute_script(script, logger)
 
             if succesful:
                 old_from = request['from']
@@ -127,7 +128,7 @@ def execute_script_on_node(root_dir, sql_manager, request, logger):
 
     return request
 
-def execute_deployment_on_node(root_dir, sql_manager, request, logger):
+def execute_deployment_on_node(sql_manager, request, logger):
 
     node_guid, deployment_guid = request['rawdata']
 
@@ -147,7 +148,7 @@ def execute_deployment_on_node(root_dir, sql_manager, request, logger):
     scripts = sql_manager.getScriptsOfDeploymentGuid(deployment_guid)
     success_data = list()
     for index, script in enumerate(scripts):
-        success, exec_results = execute_script(root_dir, script, logger)
+        success, exec_results = execute_script(script, logger)
 
         if not success:
             old_from = request['from']

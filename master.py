@@ -117,7 +117,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         if command['command'] == "EXEC" and command['params'] == "SCRIPTS.EXECUTE":
 
             sqlite_manager = SQLiteManager(self._config, self._logger)
-            response = taskrunner.execute_script_on_node(self._root_dir, sqlite_manager, command, self.logger)
+            response = taskrunner.execute_script_on_node(sqlite_manager, command, self.logger)
             sqlite_manager.closeEverything()
 
             return response

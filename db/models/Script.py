@@ -5,12 +5,14 @@ class Script:
     id = None
     guid = None
     file_name = None
+    file_path = None
     script_engine = None
 
     def toDictionary(self):
         return {
             'id': self.id,
             'guid': str(self.guid),
+            'file_path': self.file_path,
             'file_name': self.file_name,
             'script_engine': self.script_engine
         }
