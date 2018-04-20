@@ -90,6 +90,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
 
+        # TODO: Tell All Child Nodes To Disconnect, Sleep, then Start An Infinite Reconnect Attempt Cycle
+
     def SvcDoRun(self):
         self.ReportServiceStatus(win32service.SERVICE_RUNNING)
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,

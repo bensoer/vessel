@@ -14,7 +14,6 @@ import uuid
 from multiprocessing import Lock
 import json
 
-
 class HttpListenerProcess:
 
     #_sql_manager = None
@@ -81,7 +80,12 @@ class HttpListenerProcess:
 
         @app.errorhandler(400)
         def bad_request(e):
-            return jsonify(message=str(e)), 400
+
+            error = dict()
+            error["message"] = str(e)
+            error["details"] = e.description
+
+            return jsonify(error), 400
 
         @app.errorhandler(405)
         def method_not_allowed(e):
@@ -119,6 +123,11 @@ class HttpListenerProcess:
         @app.route('/api/node/<node_guid>/ping', methods=['GET'])
         def GETPingOfNode(node_guid):
             self.logger.info("Pinging Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
 
             self._pipe_lock.acquire()
             action = dict()
@@ -182,6 +191,11 @@ class HttpListenerProcess:
         def POSTScanForScriptsOnNode(node_guid):
             self.logger.info("Scanning Node Of Guid " + node_guid + " For Scripts")
 
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
             self._pipe_lock.acquire()
             # now query to get the scripts
             action = dict()
@@ -204,6 +218,12 @@ class HttpListenerProcess:
         @app.route("/api/script/<script_guid>", methods=['GET'])
         def GETScriptOfGuid(script_guid):
             self.logger.info("Fetching Script Of Guid: " + script_guid)
+
+            try:
+                uuid.UUID(script_guid, version=4)
+            except:
+                abort(400, "The Passed In Script Guid Is Invalid")
+
             uuid_script_guid = uuid.UUID(script_guid)
 
             sql_manager = SQLiteManager(self._config, self.logger)
@@ -238,6 +258,13 @@ class HttpListenerProcess:
         @app.route("/api/node/<node_guid>", methods=['GET'])
         def GETNodeOfGuid(node_guid):
             self.logger.info("Fetching Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
+
             uuid_node_guid = uuid.UUID(node_guid)
 
             sql_manager = SQLiteManager(self._config, self.logger)
@@ -256,6 +283,11 @@ class HttpListenerProcess:
         @app.route("/api/node/<node_guid>/script", methods=['GET'])
         def GETAllScriptsOfGuid(node_guid):
             self.logger.info("Fetching Scripts On Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
 
             self._pipe_lock.acquire()
             # now query to get the scripts
@@ -279,6 +311,16 @@ class HttpListenerProcess:
         @app.route("/api/node/<node_guid>/script/<script_guid>/execute", methods=['POST'])
         def POSTExecuteScriptOnNode(node_guid, script_guid):
             self.logger.info("Executing Script Of Guid: " + script_guid + " On Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
+            try:
+                uuid.UUID(script_guid, version=4)
+            except:
+                abort(400, "The Passed In Script Guid Is Invalid")
 
             self._pipe_lock.acquire()
 
@@ -313,6 +355,11 @@ class HttpListenerProcess:
         def POSTExecuteScriptLocaly(script_guid):
             self.logger.info("Executing Script Of Guid: " + script_guid + " Locally")
 
+            try:
+                uuid.UUID(script_guid, version=4)
+            except:
+                abort(400, "The Passed In Script Guid Is Invalid")
+
             self._pipe_lock.acquire()
 
             action = dict()
@@ -344,7 +391,17 @@ class HttpListenerProcess:
         def POSTMigrateScriptToNode(script_guid):
                 node_guid = request.json["node_guid"]
                 if node_guid is None:
-                    abort(400)
+                    abort(400, "A Node Guid Is Required For Migration")
+
+                try:
+                    uuid.UUID(script_guid, version=4)
+                except:
+                    abort(400, "The Passed In Script Guid Is Invalid")
+
+                try:
+                    uuid.UUID(node_guid, version=4)
+                except:
+                    abort(400, "The Passed In Node Guid Is Invalid")
 
                 self.logger.info("Migrating Script Of Guid: " + script_guid + " To Node Of Guid: " + node_guid)
 
@@ -386,6 +443,11 @@ class HttpListenerProcess:
         def GETAllDeploymentsOfNode(node_guid):
             self.logger.info("Fetching Deployments On Node Of Guid: " + node_guid)
 
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
             self._pipe_lock.acquire()
             # now query to get the scripts
             action = dict()
@@ -412,11 +474,16 @@ class HttpListenerProcess:
             deployment_script_guids = request.json.get("scriptGuids", None)
 
             if deployment_name is None or deployment_description is None or deployment_script_guids is None:
-                abort(400)
+                abort(400, "Invalid Body Content")
 
             for deployment_script_guid in deployment_script_guids:
                 if "priority" not in deployment_script_guid or "scriptGuid" not in deployment_script_guid:
-                    abort(400)
+                    abort(400, "Invalid Body Content")
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
 
             self._pipe_lock.acquire()
             action = dict()
@@ -461,6 +528,16 @@ class HttpListenerProcess:
         @app.route("/api/deployment/<deployment_guid>/node/<node_guid>/execute", methods=['POST'])
         def POSTExecuteDeploymentOfNode(node_guid, deployment_guid):
             self.logger.info("Executing Deployment Of Guid: " + deployment_guid + " On Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
+            try:
+                uuid.UUID(deployment_guid, version=4)
+            except:
+                abort(400, "The Passed In Deployment Guid Is Invalid")
 
             self._pipe_lock.acquire()
 

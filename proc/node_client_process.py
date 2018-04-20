@@ -63,7 +63,6 @@ class NodeClientProcess:
                                                                              node_private_key_password)
 
                 base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(message, aes_key)
-                #base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(message, encrypt_with_key)
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
                 return self._client_socket.send(message.encode())
@@ -119,11 +118,6 @@ class NodeClientProcess:
                                                                              node_private_key_password)
 
                 base64_encrypted_bytes = self._client_socket.recv(buffer_size)
-                #private_key, private_key_pass = decrypt_with_key_pass
-                #message = vh.decrypt_base64_bytes_with_private_key_to_string(base64_encrypted_bytes,
-                #                                                             private_key,
-                #                                                             private_key_pass)
-
                 message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
 
                 return message

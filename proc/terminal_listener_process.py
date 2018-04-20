@@ -59,9 +59,6 @@ class TerminalListenerProcess:
             # startup the listening socket
             # try:
             listener_socket = socket(AF_INET, SOCK_STREAM)
-            # listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # listener_socket.setsockopt(SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            # listener_socket.setblocking(0)
             listener_socket.bind((self._bind_ip, int(self._port)))
             listener_socket.listen(10)
 
@@ -69,6 +66,7 @@ class TerminalListenerProcess:
 
                 # limit to only 1 terminal socket per vessel
                 node_socket, address = listener_socket.accept()
+                self.logger.info("A User Has Taken Hold Of The Terminal Session. Starting Timer And Auth")
 
                 # exchange keys ?
 
