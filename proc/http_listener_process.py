@@ -213,7 +213,7 @@ class HttpListenerProcess:
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
             else:
-                return GETAllScripts()
+                return GETAllScriptsOfNodeGuid(node_guid)
 
         @app.route("/api/script/<script_guid>", methods=['GET'])
         def GETScriptOfGuid(script_guid):
@@ -281,7 +281,7 @@ class HttpListenerProcess:
             return abort(404)
 
         @app.route("/api/node/<node_guid>/script", methods=['GET'])
-        def GETAllScriptsOfGuid(node_guid):
+        def GETAllScriptsOfNodeGuid(node_guid):
             self.logger.info("Fetching Scripts On Node Of Guid: " + node_guid)
 
             try:
