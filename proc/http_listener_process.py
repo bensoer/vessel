@@ -304,16 +304,13 @@ class HttpListenerProcess:
             all_scripts = answer["rawdata"]
             self._pipe_lock.release()
 
-            all_scripts_as_dictionaries = list()
             for script in all_scripts:
-                dict_script = script.toDictionary()
-                dict_script.pop("file_path", None)
-                all_scripts_as_dictionaries.append(dict_script)
+                script.pop("file_path", None)
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
             else:
-                return jsonify(all_scripts_as_dictionaries)
+                return jsonify(all_scripts)
 
         @app.route("/api/node/<node_guid>/script/<script_guid>/execute", methods=['POST'])
         def POSTExecuteScriptOnNode(node_guid, script_guid):
