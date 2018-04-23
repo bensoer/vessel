@@ -347,7 +347,7 @@ class HttpListenerProcess:
                 response = dict()
                 response["script_guid"] = script_guid
                 response["node_guid"] = node_guid
-                response["node_execution_status"] = answer['param']
+                response["node_execution_status"] = answer['params']
                 response["results"] = answer["rawdata"]
 
                 if answer["params"] == "FAILED.NOTFOUND":
