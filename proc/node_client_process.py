@@ -7,6 +7,7 @@ from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 import threading
 import utils.vesselhelper as vh
+import utils.script_manager as sm
 from db.models.Key import Key
 import json
 from db.models.Script import Script
@@ -22,6 +23,8 @@ class NodeClientProcess:
     _master_public_key = None
     _node_aes_key = None
 
+    _script_dir = None
+
     _client_socket = None
 
     failed_initializing = False
@@ -35,6 +38,9 @@ class NodeClientProcess:
         self._master_port = config["DEFAULT"]["master_port"]
         self._log_dir = config["LOGGING"]["log_dir"]
         self._root_dir = config["DEFAULT"]["root_dir"]
+
+        self._script_dir = config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
+
         self._private_key_password = config["DEFAULT"]["private_key_password"]
         log_path = self._log_dir + "/node-client.log"
 
@@ -263,6 +269,19 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCAN.SCRIPTS":
+                        self.logger.info("Scan Scripts Request Detected. Executing")
+
+                        sm.catalogue_local_scripts(self._sql_manager, self._script_dir, self.logger)
+                        response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
+
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
                     elif command_dict["command"] == "GET" and command_dict["params"] == "PING":
                         self.logger.info("Get Ping Request Detected. Executing")
 
@@ -339,9 +358,9 @@ class NodeClientProcess:
                         error_response = dict()
                         error_response['command'] = 'ERROR'
                         error_response['from'] = 'node_client'
-                        error_response['to'] = command['from']
-                        error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
-                                                  " To: " + command['to']
+                        error_response['to'] = command_dict['from']
+                        error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
+                                                  " To: " + command_dict['to']
                         error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
 
                         serialized_data = json.dumps(error_response)
@@ -354,9 +373,9 @@ class NodeClientProcess:
                     error_response = dict()
                     error_response['command'] = 'ERROR'
                     error_response['from'] = 'node_client'
-                    error_response['to'] = command['from']
-                    error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
-                                              " To: " + command['to']
+                    error_response['to'] = command_dict['from']
+                    error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
+                                              " To: " + command_dict['to']
                     error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
                     serialized_data = json.dumps(error_response)
@@ -372,9 +391,9 @@ class NodeClientProcess:
             error_response = dict()
             error_response['command'] = 'ERROR'
             error_response['from'] = 'node_client'
-            error_response['to'] = command['from']
-            error_response['params'] = "Command: " + command['command'] + " From: " + command['from'] + \
-                                      " To: " + command['to']
+            error_response['to'] = command_dict['from']
+            error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
+                                      " To: " + command_dict['to']
             error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
                                                                         "This Event Or Is In A Broken State. Restart " \
                                                                         "To Recover"
