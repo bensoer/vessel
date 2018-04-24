@@ -395,6 +395,7 @@ class HttpListenerProcess:
         @app.route("/api/script/<script_guid>/migrate", methods=['POST'])
         def POSTMigrateScriptToNode(script_guid):
                 node_guid = request.json["node_guid"]
+
                 if node_guid is None:
                     abort(400, "A Node Guid Is Required For Migration")
 
@@ -420,7 +421,7 @@ class HttpListenerProcess:
                         action['command'] = "MIG"
                         action['from'] = "HTTP"
                         action['to'] = "NODE"
-                        action['params'] = (node_guid, script.toDictionary())
+                        action['params'] = (str(node_guid), script.toDictionary())
 
                         # rag the raw file content and put into binary string
                         file_path = script.file_path + os.sep + script.file_name
