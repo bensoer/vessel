@@ -57,7 +57,17 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
     while True:
         sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
         try:
-            encrypted_bytes = node_socket.recv(4096)
+            valid_message_received = True
+            raw_message = ""
+
+            while not valid_message_received:
+                base64_encrypted_bytes = node_socket.recv(4096)
+                raw_message += base64_encrypted_bytes
+
+                if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                    valid_message_received = True
+                    raw_message = raw_message[1:len(raw_message)-1]
+
             # find the node belonging to this socket
             address = node_listener_process.socketmap2portip[node_socket]
             ip, port = address
@@ -70,9 +80,7 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                                                                         node_listener_process.master_private_key,
                                                                         node_listener_process.private_key_password)
 
-            command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
-
-            #command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, node_listener_process.aes_key.encode())
+            command = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
 
             logging_queue.put("COMMAND RECEIVED FROM SOCKET")
             logging_queue.put(command)
@@ -179,6 +187,7 @@ class NodeListenerProcess:
 
             base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
                                                                                     aes_key)
+            base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
             node_socket2.send(base64_encrypted_bytes)
             self.logging_queue.put("Serialized Message Sent")
             sql_manager.closeEverything()  # can't use sql_manager after this

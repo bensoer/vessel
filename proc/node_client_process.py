@@ -73,8 +73,10 @@ class NodeClientProcess:
                                                                              node_private_key_password)
 
                 base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(message, aes_key)
+                base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
+                message = '{' + message + "}"
                 return self._client_socket.send(message.encode())
         except error as se:
             if se.errno == errno.ECONNRESET:
@@ -120,34 +122,27 @@ class NodeClientProcess:
     def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
 
-            pulled_message = ""
+            raw_message = ""
+            valid_message_received = False
 
-            start_bracket_count = pulled_message.count('{')
-            end_bracket_count = pulled_message.count('}')
+            while not valid_message_received:
+                base64_encrypted_bytes = self._client_socket.recv(buffer_size)
+                raw_message += base64_encrypted_bytes
 
-            while len(pulled_message) <= 0 or (end_bracket_count < start_bracket_count):
+                if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                    valid_message_received = True
+                    raw_message = raw_message[1:len(raw_message)-1]
 
-                if decrypt_with_key_pass is not None:
-
-                    node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
-                    aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                                 node_private_key,
-                                                                                 node_private_key_password)
-
-                    base64_encrypted_bytes = self._client_socket.recv(buffer_size)
-                    message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
-
-
-                    pulled_message += message
-                    start_bracket_count = pulled_message.count('{')
-                    end_bracket_count = pulled_message.count('}')
-
-                else:
-                    pulled_message += self._client_socket.recv(buffer_size).decode('utf8')
-                    start_bracket_count = pulled_message.count('{')
-                    end_bracket_count = pulled_message.count('}')
-
-            return pulled_message
+            if decrypt_with_key_pass is not None:
+                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                             node_private_key,
+                                                                             node_private_key_password)
+                message = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
+                return message
+            else:
+                message = raw_message.decode('utf8')
+                return message
 
         except error as se:
             if se.errno == errno.ECONNRESET:

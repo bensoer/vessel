@@ -32,7 +32,7 @@ def migrate(root_dir, sql_manager, request, logger):
     request['from'] = request['to']
     request['to'] = old_from
     request['params'] = "SUCCESS"
-    request['rawdata'] = script
+    request['rawdata'] = script.toDictionary()
 
     return request
 
