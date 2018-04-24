@@ -404,6 +404,8 @@ class NodeClientProcess:
         except Exception as e:
             self.logger.exception("Fatal Error Processing For Node Client")
 
+            # FIXME: command_dict doesn't exist in this context!
+
             error_response = dict()
             error_response['command'] = 'ERROR'
             error_response['from'] = 'node_client'
