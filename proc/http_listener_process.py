@@ -422,7 +422,7 @@ class HttpListenerProcess:
                         action['params'] = (node_guid, script.toDictionary())
 
                         # rag the raw file content and put into binary string
-                        file_path = self._root_dir + "/scripts/" + script.file_name
+                        file_path = script.file_path + os.sep + script.file_name
                         fp = open(file_path, 'rb')
                         all_file_contents = fp.read()
                         fp.close()
