@@ -14,6 +14,7 @@ import uuid
 from multiprocessing import Lock
 import json
 import os
+import base64
 
 class HttpListenerProcess:
 
@@ -429,7 +430,7 @@ class HttpListenerProcess:
                         all_file_contents = fp.read()
                         fp.close()
 
-                        action['rawdata'] = all_file_contents
+                        action['rawdata'] = base64.b64encode(all_file_contents).decode('utf-8')
 
                         self._pipe_lock.acquire()
                         self.child_pipe.send(action)

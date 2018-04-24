@@ -8,6 +8,7 @@ from db.models.DeploymentScript import DeploymentScript
 import os
 import platform
 import pip
+import base64
 
 # THIS IS THE APP WIDE GLOBAL
 vessel_version = "1.0.0"
@@ -22,7 +23,8 @@ def migrate(root_dir, sql_manager, request, logger):
     file_path = root_dir + os.sep + "scripts" + os.sep + script.file_name
     fp = open(file_path, 'wb+')
     file_data = request['rawdata']
-    fp.write(file_data)
+    encoded_data = base64.b64decode(file_data.encode())
+    fp.write(encoded_data)
     fp.flush()
     fp.close()
 
