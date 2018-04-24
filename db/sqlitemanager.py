@@ -71,11 +71,11 @@ class SQLiteManager:
         return node
 
     def getNodeOfGuid(self, node_guid):
-        self._logger.info("Getting Node Of Guid: " + node_guid)
+        self._logger.info("Getting Node Of Guid: " + str(node_guid))
 
         all_nodes = self.getAllNodes()
         for node in all_nodes:
-            if node.guid == uuid.UUID(node_guid):
+            if node.guid == uuid.UUID(str(node_guid)):
                 return node
 
         return None

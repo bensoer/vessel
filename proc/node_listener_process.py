@@ -163,7 +163,7 @@ class NodeListenerProcess:
         self.logging_queue.put(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
         sql_manager = SQLiteManager(self._config, self.logger)
-        node = sql_manager.getNodeOfGuid(node_guid)
+        node = sql_manager.getNodeOfGuid(str(node_guid))
         self.logging_queue.put("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
         node_socket2 = self.portipmap2socket[node.ip + ":" + str(node.port)]
 
