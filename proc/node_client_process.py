@@ -122,7 +122,7 @@ class NodeClientProcess:
     def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
 
-            raw_message = ""
+            raw_message: bytes = b''
             valid_message_received = False
 
             while not valid_message_received:

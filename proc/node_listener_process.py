@@ -58,7 +58,7 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
         sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
         try:
             valid_message_received = True
-            raw_message = ""
+            raw_message: bytes = b''
 
             while not valid_message_received:
                 base64_encrypted_bytes = node_socket.recv(4096)
