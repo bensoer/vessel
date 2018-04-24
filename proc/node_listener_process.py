@@ -322,8 +322,9 @@ class NodeListenerProcess:
                                                                             self.private_key_password)
                 base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
                                                                                         aes_key)
-                node_socket.send(base64_encrypted_bytes)
+                node_socket.send(b'{' + base64_encrypted_bytes + b'}')
                 encrypted_bytes = node_socket.recv(4096)
+                encrypted_bytes = encrypted_bytes[1:len(encrypted_bytes)-1]
 
                 command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
                 command_dict = json.loads(command)
