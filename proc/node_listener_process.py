@@ -64,9 +64,10 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                 base64_encrypted_bytes = node_socket.recv(4096)
                 raw_message += base64_encrypted_bytes
 
-                if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
-                    valid_message_received = True
-                    raw_message = raw_message[1:len(raw_message)-1]
+                if len(raw_message) > 0:
+                    if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                        valid_message_received = True
+                        raw_message = raw_message[1:len(raw_message)-1]
 
             # find the node belonging to this socket
             address = node_listener_process.socketmap2portip[node_socket]

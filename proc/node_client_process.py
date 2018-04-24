@@ -129,9 +129,10 @@ class NodeClientProcess:
                 base64_encrypted_bytes = self._client_socket.recv(buffer_size)
                 raw_message += base64_encrypted_bytes
 
-                if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
-                    valid_message_received = True
-                    raw_message = raw_message[1:len(raw_message)-1]
+                if len(raw_message) > 0:
+                    if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                        valid_message_received = True
+                        raw_message = raw_message[1:len(raw_message)-1]
 
             if decrypt_with_key_pass is not None:
                 node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
