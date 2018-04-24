@@ -125,7 +125,7 @@ class NodeClientProcess:
             start_bracket_count = pulled_message.count('{')
             end_bracket_count = pulled_message.count('}')
 
-            while len(pulled_message) <= 0 or end_bracket_count < start_bracket_count:
+            while len(pulled_message) <= 0 or (end_bracket_count < start_bracket_count):
 
                 if decrypt_with_key_pass is not None:
 
@@ -137,10 +137,15 @@ class NodeClientProcess:
                     base64_encrypted_bytes = self._client_socket.recv(buffer_size)
                     message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
 
+
                     pulled_message += message
+                    start_bracket_count = pulled_message.count('{')
+                    end_bracket_count = pulled_message.count('}')
 
                 else:
                     pulled_message += self._client_socket.recv(buffer_size).decode('utf8')
+                    start_bracket_count = pulled_message.count('{')
+                    end_bracket_count = pulled_message.count('}')
 
             return pulled_message
 
