@@ -158,9 +158,9 @@ class NodeListenerProcess:
 
         self.logger.info("Connection Complete")
 
-    def forwardCommandToAppropriateNode(self, command, node_guid):
+    def forwardCommandToAppropriateNode(self, command, node_guid: str):
         self.logging_queue.put("Now Attempting Forwarding Command To Appropriate Node")
-        self.logging_queue.put("Searching For Socket Matching Node Guid: " + node_guid)
+        self.logging_queue.put(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
         sql_manager = SQLiteManager(self._config, self.logger)
         node = sql_manager.getNodeOfGuid(node_guid)
