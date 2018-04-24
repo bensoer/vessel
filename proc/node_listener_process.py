@@ -34,7 +34,7 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
             node_guid = command['rawdata'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
         elif command['command'] == 'MIG':
-            node_guid = command['rawdata'][0]
+            node_guid = command['params'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
         elif command['command'] == 'CREATE':
             node_guid = command['rawdata'][0]
