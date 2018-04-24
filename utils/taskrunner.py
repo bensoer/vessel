@@ -34,13 +34,14 @@ def migrate(root_dir, sql_manager, request, logger):
 
     return request
 
-def get_ping_info(request):
+def get_ping_info(request, config):
 
     old_from = request['from']
     request['from'] = request['to']
     request['to'] = old_from
 
     ping_info = dict()
+    ping_info["node-name"] = config["DEFAULT"].get("name", "node")
     ping_info["vessel-version"] = vessel_version
     ping_info["python-version"] = platform.python_version()
     ping_info["python-compiler"] = platform.python_compiler()

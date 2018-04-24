@@ -24,8 +24,10 @@ class NodeClientProcess:
     _node_aes_key = None
 
     _script_dir = None
+    _node_name = None
 
     _client_socket = None
+    _config = None
 
     failed_initializing = False
 
@@ -33,11 +35,13 @@ class NodeClientProcess:
         child_pipe, config = initialization_tuple
 
         self.child_pipe = child_pipe
+        self._config = config
 
         self._master_host = config["DEFAULT"]["master_domain"]
         self._master_port = config["DEFAULT"]["master_port"]
         self._log_dir = config["LOGGING"]["log_dir"]
         self._root_dir = config["DEFAULT"]["root_dir"]
+        self._node_name = config["DEFAULT"].get("name", "node")
 
         self._script_dir = config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
@@ -285,7 +289,7 @@ class NodeClientProcess:
                     elif command_dict["command"] == "GET" and command_dict["params"] == "PING":
                         self.logger.info("Get Ping Request Detected. Executing")
 
-                        response = taskrunner.get_ping_info(command_dict)
+                        response = taskrunner.get_ping_info(command_dict, self._config)
                         self.logger.info("Fetched Data. Now Serializing For Response")
                         serialized_data = json.dumps(response)
                         self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,

@@ -11,6 +11,9 @@ private_key_password=mysecurepassword
 # supports multiple paths seperated by semi-colons (C:\location\one;C:\location\two)
 scripts_dir=C:\vessel\scripts
 
+# give this node a name
+name=hellberg
+
 [LOGGING]
 # logging location including maximum file size and number of files to be kept. vessel will automatically remove old
 # logs when more files then the max_file_count have built up

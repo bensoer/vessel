@@ -298,15 +298,38 @@ class NodeListenerProcess:
                 key.name = "node.key.aes"
                 key = self._sql_manager.insertKey(key)
 
+
+                # pass a command to the node to fetch ping information and get the node name
+                action = dict()
+                action['command'] = "GET"
+                action['from'] = "LISTENER"
+                action['to'] = "NODE"
+                action['params'] = "PING"
+
+                serialized_command = json.dumps(action)
+                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
+                                                                            self.master_private_key,
+                                                                            self.private_key_password)
+                base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
+                                                                                        aes_key)
+                node_socket.send(base64_encrypted_bytes)
+                encrypted_bytes = node_socket.recv(4096)
+
+                command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
+                command_dict = json.loads(command)
+
+                node_name = command_dict['rawdata']['node-name']
+
                 self.logging_queue.put("Adding Node To DB")
                 # add this node to our db
                 node = Node()
                 node.ip = client_ip
                 node.port = client_port
-                node.name = "node"
+                node.name = node_name
                 node.key_guid = key.guid
 
                 self._sql_manager.insertNode(node)
+
 
                 self.logging_queue.put("New Connection Establishment Complete")
 
