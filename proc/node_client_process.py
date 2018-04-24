@@ -120,19 +120,30 @@ class NodeClientProcess:
     def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
 
-            if decrypt_with_key_pass is not None:
+            pulled_message = ""
 
-                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
+            start_bracket_count = pulled_message.count('{')
+            end_bracket_count = pulled_message.count('}')
 
-                base64_encrypted_bytes = self._client_socket.recv(buffer_size)
-                message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
+            while len(pulled_message) <= 0 or end_bracket_count < start_bracket_count:
 
-                return message
-            else:
-                return self._client_socket.recv(buffer_size).decode('utf8')
+                if decrypt_with_key_pass is not None:
+
+                    node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
+                    aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
+                                                                                 node_private_key,
+                                                                                 node_private_key_password)
+
+                    base64_encrypted_bytes = self._client_socket.recv(buffer_size)
+                    message = vh.decrypt_base64_bytes_with_aes_key_to_string(base64_encrypted_bytes, aes_key)
+
+                    pulled_message += message
+
+                else:
+                    pulled_message += self._client_socket.recv(buffer_size).decode('utf8')
+
+            return pulled_message
+
         except error as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info("Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
