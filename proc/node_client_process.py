@@ -185,6 +185,7 @@ class NodeClientProcess:
                 return None
 
     def start(self):
+        command_dict = None
         try:
             self.logger.info("Configuring Local Keys")
 
@@ -385,37 +386,37 @@ class NodeClientProcess:
                 except Exception as e:
                     self.logger.exception("Unexpected Error Thrown While Processing a Request.")
 
-                    error_response = dict()
-                    error_response['command'] = 'ERROR'
-                    error_response['from'] = 'node_client'
-                    error_response['to'] = command_dict['from']
-                    error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
-                                              " To: " + command_dict['to']
-                    error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
+                    if command_dict is not None:
 
-                    serialized_data = json.dumps(error_response)
-                    self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
+                        error_response = dict()
+                        error_response['command'] = 'ERROR'
+                        error_response['from'] = 'node_client'
+                        error_response['to'] = command_dict['from']
+                        error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
+                                                  " To: " + command_dict['to']
+                        error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
-
+                        serialized_data = json.dumps(error_response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
 
         except Exception as e:
             self.logger.exception("Fatal Error Processing For Node Client")
 
-            # FIXME: command_dict doesn't exist in this context!
+            if command_dict is not None:
 
-            error_response = dict()
-            error_response['command'] = 'ERROR'
-            error_response['from'] = 'node_client'
-            error_response['to'] = command_dict['from']
-            error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
-                                      " To: " + command_dict['to']
-            error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
-                                                                        "This Event Or Is In A Broken State. Restart " \
-                                                                        "To Recover"
+                error_response = dict()
+                error_response['command'] = 'ERROR'
+                error_response['from'] = 'node_client'
+                error_response['to'] = command_dict['from']
+                error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
+                                          " To: " + command_dict['to']
+                error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
+                                                                            "This Event Or Is In A Broken State. Restart " \
+                                                                            "To Recover"
 
-            serialized_data = json.dumps(error_response)
-            self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
-                                                                       self._private_key_password,
-                                                                       self._node_aes_key))
+                serialized_data = json.dumps(error_response)
+                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                           self._private_key_password,
+                                                                           self._node_aes_key))

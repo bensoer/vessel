@@ -88,7 +88,5 @@ class TerminalListenerProcess:
                         node_socket.close()
                         session_active = False
 
-
-
         except Exception as e:
             self.logger.exception("Error Processing For Terminal Listener")
