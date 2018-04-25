@@ -294,10 +294,12 @@ class SQLiteManager:
         script_engine = script.script_engine
         file_path = script.file_path
 
-        query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE file_name = " + file_name
+        query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE file_name = '" + file_name + "'"
         self._cursor.execute(query)
         existing_script = self._cursor.fetchone()
-        if existing_script == None:
+
+        if existing_script is None:
+
             query = "INSERT INTO scripts (guid, file_name, script_engine, file_path) VALUES('{guid}', '{file_name}', '{script_engine}', '{file_path}')"
             query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine, file_path=file_path)
             self._cursor.execute(query)
@@ -307,6 +309,7 @@ class SQLiteManager:
 
             script.id = script_id
             return script
+
         else:
             script.id = existing_script[0]
             script.guid = existing_script[1]
