@@ -44,13 +44,12 @@ def catalogue_local_scripts(sqlite_manager, script_dir, logger):
             logger.info("Path Is Valid: >" + path + "<")
             catalogue_path(path, known_scripts, sqlite_manager, logger)
 
-    # FIXME: Need to be able to remove files not on the file system!
-
-    #logger.info("Removing Record Entries For Scripts No Longer On The System")
-    #for known_script in known_scripts:
-    #    if len([script_file for script_file in script_files if script_file == known_script.file_name]) == 0:
-    #        # this script doesn't exist in the file system
-    #        sqlite_manager.deleteScriptOfId(known_script.id)
+    logger.info("Removing Record Entries For Scripts No Longer On The System")
+    for known_script in known_scripts:
+        if not os.path.isfile(known_script.file_path + os.sep + known_script.file_name):
+            logger.info("Script No Longer Exists. Deleting From DB: " + known_script.file_path + os.sep
+                        + known_script.file_name)
+            sqlite_manager.deleteScriptOfId(known_script.id)
 
 
 def determine_engine_for_script(script_name):
