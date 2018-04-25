@@ -436,6 +436,7 @@ class HttpListenerProcess:
                         self.child_pipe.send(action)
 
                         answer = self.child_pipe.recv()
+                        self._pipe_lock.release()
 
                         sql_manager.closeEverything()
                         if answer['command'] == "ERROR":
