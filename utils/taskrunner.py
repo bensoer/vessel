@@ -18,7 +18,7 @@ def migrate(root_dir, sql_manager, request, logger):
     node_guid, serialized_script = request['params']
     script = Script.fromDictionary(serialized_script)
     script.file_path = root_dir + os.sep + "scripts"  # set the path to the new dir location
-    script.id = sql_manager.insertScript(script)
+    script.id = sql_manager.insertScript(script).id
 
     file_path = root_dir + os.sep + "scripts" + os.sep + script.file_name
     fp = open(file_path, 'wb+')
