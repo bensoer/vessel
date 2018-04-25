@@ -444,9 +444,9 @@ class HttpListenerProcess:
 
                             response = dict()
                             response["migrationStatus"] = answer["params"]
-                            response["fileName"] = answer["file_name"]
-                            response["destinationFilePath"] = answer["file_path"]
-                            response["scriptGuid"] = answer["guid"]
+                            response["fileName"] = answer['rawdata']["file_name"]
+                            response["destinationFilePath"] = answer['rawdata']["file_path"]
+                            response["scriptGuid"] = answer['rawdata']["guid"]
 
                             return jsonify(response)
 
