@@ -285,6 +285,38 @@ class SQLiteManager:
         self._cursor.execute(query)
         self._conn.commit()
 
+    def insertScriptIfNotExists(self, script):
+        guid = script.guid
+        if script.guid == None:
+            guid = uuid.uuid4()
+
+        file_name = script.file_name
+        script_engine = script.script_engine
+        file_path = script.file_path
+
+        query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE file_name = " + file_name
+        self._cursor.execute(query)
+        existing_script = self._cursor.fetchone()
+        if existing_script == None:
+            query = "INSERT INTO scripts (guid, file_name, script_engine, file_path) VALUES('{guid}', '{file_name}', '{script_engine}', '{file_path}')"
+            query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine, file_path=file_path)
+            self._cursor.execute(query)
+
+            script_id = self._cursor.lastrowid
+            self._conn.commit()
+
+            script.id = script_id
+            return script
+        else:
+            script.id = existing_script[0]
+            script.guid = existing_script[1]
+            script.file_name = existing_script[2]
+            script.script_engine = existing_script[3]
+            script.file_path = existing_script[4]
+
+            return script
+
+
 
     def insertScript(self, script):
 
