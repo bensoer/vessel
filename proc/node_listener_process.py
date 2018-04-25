@@ -57,7 +57,7 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
     while True:
         sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
         try:
-            valid_message_received = True
+            valid_message_received = False
             raw_message: bytes = b''
 
             while not valid_message_received:
@@ -65,7 +65,7 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                 raw_message += base64_encrypted_bytes
 
                 if len(raw_message) > 0:
-                    if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                    if raw_message[:1] == b'{' and raw_message[len(raw_message) - 1:] == b'}':
                         valid_message_received = True
                         raw_message = raw_message[1:len(raw_message)-1]
 
@@ -181,7 +181,6 @@ class NodeListenerProcess:
 
         try:
             key = sql_manager.getKeyOfGuid(node.key_guid)
-            #base64_encrypted_bytes = vh.encrypt_string_with_public_key_to_base64_bytes(serialized_command, public_key.key)
             aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(key.key.encode(),
                                                                          self.master_private_key,
                                                                          self.private_key_password)
@@ -308,7 +307,6 @@ class NodeListenerProcess:
                 key.name = "node.key.aes"
                 key = self._sql_manager.insertKey(key)
 
-
                 # pass a command to the node to fetch ping information and get the node name
                 action = dict()
                 action['command'] = "GET"
@@ -322,10 +320,11 @@ class NodeListenerProcess:
                                                                             self.private_key_password)
                 base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
                                                                                         aes_key)
+
                 node_socket.send(b'{' + base64_encrypted_bytes + b'}')
                 encrypted_bytes = node_socket.recv(4096)
-                encrypted_bytes = encrypted_bytes[1:len(encrypted_bytes)-1]
 
+                encrypted_bytes = encrypted_bytes[1:len(encrypted_bytes)-1]
                 command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
                 command_dict = json.loads(command)
 
@@ -340,10 +339,7 @@ class NodeListenerProcess:
                 node.key_guid = key.guid
 
                 self._sql_manager.insertNode(node)
-
-
                 self.logging_queue.put("New Connection Establishment Complete")
-
                 self.logging_queue.put("Now Spawning Processing Thread To Handle Future Reads By This Socket")
 
                 self.logging_queue.put("Launching Socket Listening Thread")

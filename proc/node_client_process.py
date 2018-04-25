@@ -131,7 +131,7 @@ class NodeClientProcess:
                     raw_message += base64_encrypted_bytes
 
                     if len(raw_message) > 0:
-                        if raw_message[0] == '{' and raw_message[len(raw_message) - 1] == '}':
+                        if raw_message[:1] == b'{' and raw_message[len(raw_message) - 1:] == b'}':
                             valid_message_received = True
                             raw_message = raw_message[1:len(raw_message)-1]
 
