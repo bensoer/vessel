@@ -441,7 +441,14 @@ class HttpListenerProcess:
                         if answer['command'] == "ERROR":
                             return handle_internal_error(answer)
                         else:
-                            return jsonify(answer)
+
+                            response = dict()
+                            response["migrationStatus"] = answer["params"]
+                            response["fileName"] = answer["file_name"]
+                            response["destinationFilePath"] = answer["file_path"]
+                            response["scriptGuid"] = answer["guid"]
+
+                            return jsonify(response)
 
                 sql_manager.closeEverything()
                 abort(404)
