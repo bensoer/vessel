@@ -52,6 +52,8 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
             child_pipe.send(error_response)
 
 
+
+
 def socket_recv_handler(node_listener_process, logging_queue, node_socket, child_pipe):
     logging_queue.put("Starting Socket Receive Handler")
     while True:
@@ -190,6 +192,7 @@ class NodeListenerProcess:
             base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
             node_socket2.send(base64_encrypted_bytes)
             self.logging_queue.put("Serialized Message Sent")
+
             sql_manager.closeEverything()  # can't use sql_manager after this
             return True
         except error as se:
@@ -299,13 +302,7 @@ class NodeListenerProcess:
                     node_socket.close()
                     continue
 
-
-                self.logging_queue.put("Adding Key To DB")
-                # add the key to our db
-                key = Key()
-                key.key = aes_key_encrypted.decode('utf-8') # note this key is encrypted with our public key and then base64 encoded
-                key.name = "node.key.aes"
-                key = self._sql_manager.insertKey(key)
+                self.logging_queue.put("Making Ping Request To Retrieve Node Information")
 
                 # pass a command to the node to fetch ping information and get the node name
                 action = dict()
@@ -322,11 +319,41 @@ class NodeListenerProcess:
                                                                                         aes_key)
 
                 node_socket.send(b'{' + base64_encrypted_bytes + b'}')
-                encrypted_bytes = node_socket.recv(4096)
+                self.logging_queue.put("Request Sent")
 
-                encrypted_bytes = encrypted_bytes[1:len(encrypted_bytes)-1]
+                valid_message_received = False
+                full_encrypted_bytes: bytes = b''
+
+                while not valid_message_received:
+                    self.logging_queue.put("Getting Segment of Response")
+                    encrypted_bytes = node_socket.recv(4096)
+                    full_encrypted_bytes += encrypted_bytes
+
+                    if len(full_encrypted_bytes) > 0:
+                        if full_encrypted_bytes[:1] == b'{' and full_encrypted_bytes[len(full_encrypted_bytes) - 1:] == b'}':
+                            valid_message_received = True
+                            self.logging_queue.put("Full Message Segment Parsed. Now Processing")
+
+                # place back into encrypted_bytes the trimmed and fixed message
+                encrypted_bytes = full_encrypted_bytes[1:len(full_encrypted_bytes)]
                 command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
                 command_dict = json.loads(command)
+
+                if command_dict["command"] == "ERROR":
+                    # connection had a fatal error
+                    self.logging_queue.put("Fatal Error Trying To Ping Recently Established Node. Failed To Complete "
+                                           "Connection Sequence. Connection Will Be Terminated")
+                    self.logging_queue.put(command)
+                    node_socket.close()
+                    continue
+
+                self.logging_queue.put("Adding Key To DB")
+                # add the key to our db
+                key = Key()
+                key.key = aes_key_encrypted.decode(
+                    'utf-8')  # note this key is encrypted with our public key and then base64 encoded
+                key.name = "node.key.aes"
+                key = self._sql_manager.insertKey(key)
 
                 node_name = command_dict['rawdata']['node-name']
 
@@ -337,6 +364,7 @@ class NodeListenerProcess:
                 node.port = client_port
                 node.name = node_name
                 node.key_guid = key.guid
+                node.state = "UP"
 
                 self._sql_manager.insertNode(node)
                 self.logging_queue.put("New Connection Establishment Complete")
@@ -353,4 +381,5 @@ class NodeListenerProcess:
                 self.logging_queue.put("Processing Of New Connection Complete")
 
         except Exception as e:
-            self.logger.exception("Error Processing For Node Listener")
+            self.logger.exception("Fatal / Unknown Error Processing For Node Listener. Node Listener Process"
+                                  " Will Terminate")

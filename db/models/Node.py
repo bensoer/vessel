@@ -6,6 +6,7 @@ class Node:
     key_guid = None
     guid = None
     port = None
+    state = None
 
     def toDictionary(self):
         return {
@@ -14,5 +15,6 @@ class Node:
             'ip':self.ip,
             'port':self.port,
             'key_guid':str(self.key_guid),
-            'guid':str(self.guid)
+            'guid':str(self.guid),
+            'state':self.state
         }

@@ -27,7 +27,7 @@ class SQLiteManager:
                         (id INTEGER PRIMARY KEY , guid TEXT, name TEXT, description TEXT, key TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS nodes
-                        (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, ip TEXT, port TEXT, key_guid TEXT)''')
+                        (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, ip TEXT, port TEXT, key_guid TEXT, state TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS  scripts
                           (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, file_path TEXT, file_name TEXT, script_engine TEXT)''')
@@ -58,9 +58,10 @@ class SQLiteManager:
         ip = node.ip
         key_guid = node.key_guid
         port = node.port
+        state = node.state
 
-        query = "INSERT INTO nodes (guid, name, ip, port, key_guid) VALUES ('{guid}', '{name}', '{ip}', '{port}', '{key_guid}')"
-        query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid))
+        query = "INSERT INTO nodes (guid, name, ip, port, key_guid, state) VALUES ('{guid}', '{name}', '{ip}', '{port}', '{key_guid}', '{state}')"
+        query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state)
 
         self._logger.info("Inserting Node Record")
         self._cursor.execute(query)
@@ -69,6 +70,26 @@ class SQLiteManager:
         self._conn.commit()
 
         return node
+
+    def updateNode(self, node):
+
+        name = node.name
+        ip = node.ip
+        key_guid = node.key_guid
+        port = node.port
+        state = node.state
+        guid = node.guid
+
+        query = "UPDATE nodes SET name='{name}', ip='{ip}', port='{port}', key_guid='{key_guid}', state='{state}' WHERE guid='{guid}'"
+        query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state)
+
+        self._logger.info("Updating Node Record")
+        self._cursor.execute(query)
+
+        self._conn.commit()
+
+        return self.getNodeOfGuid(guid)
+
 
     def getNodeOfGuid(self, node_guid):
         self._logger.info("Getting Node Of Guid: " + str(node_guid))
@@ -106,7 +127,7 @@ class SQLiteManager:
         self._conn.commit()
 
     def getAllNodes(self):
-        query = "SELECT id, guid, name, ip, port, key_guid FROM nodes"
+        query = "SELECT id, guid, name, ip, port, key_guid, state FROM nodes"
 
         self._logger.info("Getting All Nodes")
         self._cursor.execute(query)
@@ -120,6 +141,7 @@ class SQLiteManager:
             node_model.ip = node[3]
             node_model.port = node[4]
             node_model.key_guid = uuid.UUID(node[5])
+            node_model.state = node[6]
             all_nodes.append(node_model)
 
         return all_nodes

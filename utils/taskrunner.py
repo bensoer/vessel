@@ -7,7 +7,10 @@ from db.models.Deployment import Deployment
 from db.models.DeploymentScript import DeploymentScript
 import os
 import platform
-import pip
+try:
+    from pip._internal.utils.misc import get_installed_distributions
+except ImportError:  # pip<10
+    from pip import get_installed_distributions
 import base64
 
 # THIS IS THE APP WIDE GLOBAL
@@ -48,7 +51,7 @@ def get_ping_info(request, config):
     ping_info["python-version"] = platform.python_version()
     ping_info["python-compiler"] = platform.python_compiler()
     ping_info["operating-system"] = platform.platform()
-    ping_info["packages"] = sorted(["%s==%s" % (i.key, i.version) for i in pip.get_installed_distributions()])
+    ping_info["packages"] = sorted(["%s==%s" % (i.key, i.version) for i in get_installed_distributions()])
 
     request["rawdata"] = ping_info
 

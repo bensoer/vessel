@@ -25,23 +25,24 @@ def bootstrapper(wrapper_object, initialization_tuple):
 def pipe_recv_handler(master_process, parent_pipe):
     master_process._logger.info("Pipe Recv Handler Spawned. Listening For Messages")
     while True:
-        command = parent_pipe.recv()
-        master_process._logger.info("Received Command: " + str(command))
+        if not master_process.shutdown_occurring:
+            command = parent_pipe.recv()
+            master_process._logger.info("Received Command: " + str(command))
 
-        message_for = command["to"]
+            message_for = command["to"]
 
-        if message_for == "NODE":
-            master_process.sendMessageToNodeProcess(command)
-        elif message_for == "TERMINAL":
-            master_process.sendMessageToTerminalProcess(command)
-        elif message_for == "HTTP":
-            master_process.sendMessageToHttpProcess(command)
-        elif message_for == "MASTER":
-            answer = master_process.handle_master_requests(command)
-            # send the answer back wherever it came (most likely the http)
-            parent_pipe.send(answer)
-        else:
-            master_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
+            if message_for == "NODE":
+                master_process.sendMessageToNodeProcess(command)
+            elif message_for == "TERMINAL":
+                master_process.sendMessageToTerminalProcess(command)
+            elif message_for == "HTTP":
+                master_process.sendMessageToHttpProcess(command)
+            elif message_for == "MASTER":
+                answer = master_process.handle_master_requests(command)
+                # send the answer back wherever it came (most likely the http)
+                parent_pipe.send(answer)
+            else:
+                master_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
 
 
 
@@ -63,6 +64,10 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     terminal_parent_pipe = None
     node_parent_pipe = None
     http_parent_pipe = None
+
+    shutdown_occurring = False
+    shutdown_processing_complete = False
+
 
     def __init__(self,args):
         win32serviceutil.ServiceFramework.__init__(self,args)
@@ -89,8 +94,40 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+        self.shutdown_occurring = True
 
         # TODO: Tell All Child Nodes To Disconnect, Sleep, then Start An Infinite Reconnect Attempt Cycle
+
+        # get list of all the nodes
+
+        sql_manager = SQLiteManager(self._config, self.logger)
+        all_nodes = sql_manager.getAllNodes()
+
+        all_nodes_as_dictionaries = list()
+        for node in all_nodes:
+            dict_node = node.toDictionary()
+            dict_node.pop("ip", None)
+            all_nodes_as_dictionaries.append(dict_node)
+
+        sql_manager.closeEverything()
+
+        # send message to each node to disconnect, sleep and then start infinite reconnect attempts
+        for node in all_nodes_as_dictionaries:
+            action = dict()
+            action['command'] = "EXEC"
+            action['from'] = "MASTER"
+            action['to'] = "NODE"
+            action['params'] = "SYS.RESTART"
+            action['rawdata'] = (node['guid'])
+
+            self.sendMessageToNodeProcess(action)
+
+        # wait for all the nodes to disconnect via checking the db
+        while len(sql_manager.getAllNodes()) > 0:
+            pass
+
+        # now it is safe to terminate
+        self.shutdown_processing_complete = True
 
     def SvcDoRun(self):
         self.ReportServiceStatus(win32service.SERVICE_RUNNING)
@@ -223,6 +260,12 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             # hang for 1 minute or until service is stopped - whichever comes first
             rc = win32event.WaitForSingleObject(self.hWaitStop, (1 * 60 * 1000))
 
+        # don't terminate processes until all of the shutdown procedure has completed
+        while not self.shutdown_processing_complete:
+            # loop until its done
+            pass
+
+        # now temrinate processes
         self._node_process.terminate()
         self._terminal_process.terminate()
         self._http_process.terminate()

@@ -15,6 +15,7 @@ import uuid
 import subprocess
 from subprocess import CalledProcessError
 import utils.taskrunner as taskrunner
+import time
 
 class NodeClientProcess:
 
@@ -92,31 +93,10 @@ class NodeClientProcess:
                 except:
                     pass
 
-            # connect again to master
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((self._master_host, int(self._master_port)))
-
-            try:
-
-                # exchange keys
-                self._master_public_key = self._recv_message(2048)
-
-                node_private_key, node_private_key_password, node_aes_key = encrypt_with_key
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-
-                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                      self._master_public_key)
-                self._client_socket.send(encrypted_aes_key)
-
-                # return _recv_message again
-                return self._send_message(message, encrypt_with_key=encrypt_with_key)
-            except:
-                # if connection fails here - then host prob is down. so stop trying
+            reconnect_succeeded = self.execute_connect_to_host_procedure()
+            if not reconnect_succeeded:
                 self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
                 exit(1)
-                return None
 
     def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
@@ -158,31 +138,48 @@ class NodeClientProcess:
                 except:
                     pass
 
-            # connect again to master
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((self._master_host, int(self._master_port)))
-
-            try:
-
-                # exchange keys
-                self._master_public_key = self._recv_message(2048)
-
-                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-
-                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                      self._master_public_key)
-                self._client_socket.send(encrypted_aes_key)
-
-                # return _recv_message again
-                return self._recv_message(buffer_size, decrypt_with_key_pass=decrypt_with_key_pass)
-            except:
-                # if connection fails here - then host prob is down. so stop trying
+            reconnect_succeeded = self.execute_connect_to_host_procedure()
+            if not reconnect_succeeded:
                 self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
                 exit(1)
                 return None
+
+    def execute_connect_to_host_procedure(self)->bool:
+        try:
+            address_results = getaddrinfo(self._master_host, int(self._master_port))
+            master_ip = address_results[0][4][0]
+
+            self._client_socket = socket(AF_INET, SOCK_STREAM)
+            self._client_socket.connect((master_ip, int(self._master_port)))
+        except:
+            self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
+            self.failed_initializing = True
+            return False
+
+        try:
+
+            self.logger.info("Connection Established With Master. Securing Connection With Keys")
+
+            self._master_public_key = self._recv_message(2048)
+            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
+                                                                        self._node_private_key,
+                                                                        self._private_key_password)
+
+            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                 self._master_public_key)
+
+            self._send_message(encrypted_aes_key.decode('utf-8'))
+
+            self.logger.info("Key Received From Master")
+            self.logger.info(self._master_public_key)
+
+            self.logger.info("Connection Secured")
+        except:
+            self.logger.exception("Connection With Master Node Failed. Aborting Processing")
+            self.failed_initializing = True
+            return False
+
+        return True
 
     def start(self):
         command_dict = None
@@ -227,35 +224,7 @@ class NodeClientProcess:
             self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
 
-            try:
-                address_results = getaddrinfo(self._master_host, int(self._master_port))
-                self._master_host = address_results[0][4][0]
-
-                self._client_socket = socket(AF_INET, SOCK_STREAM)
-                self._client_socket.connect((self._master_host, int(self._master_port)))
-            except:
-                self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
-                self.failed_initializing = True
-                return
-
-            self.logger.info("Connection Established With Master. Securing Connection With Keys")
-
-            self._master_public_key = self._recv_message(2048)
-
-            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
-                                                               self._node_private_key,
-                                                               self._private_key_password)
-
-            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                 self._master_public_key)
-
-            self._send_message(encrypted_aes_key.decode('utf-8'))
-
-
-            self.logger.info("Key Received From Master")
-            self.logger.info(self._master_public_key)
-
-            self.logger.info("Connection Secured")
+            self.execute_connect_to_host_procedure()
 
             while True:
 
@@ -367,6 +336,32 @@ class NodeClientProcess:
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
+
+                    elif command_dict["command"] == "EXEC" and command_dict["params"] == "SYS.RESTART":
+                        self.logger.info("Master Node Restart Request Received. Disconnecting and Starting "
+                                         "Reconnect Loop")
+
+                        # disconnect from master. Sleep for 2 minutes, then start reconnecting
+                        try:
+                            self._client_socket.shutdown(socket.SHUT_RDWR)
+                        except:
+                            pass
+                        try:
+                            self._client_socket.close()
+                        except:
+                            pass
+
+                        self.logger.info("Diconnect From Master Node Complete. Sleeping For 2 Minutes")
+                        time.sleep(120)
+
+                        self.logger.info("Sleep Period Completed. Starting Reconnection")
+                        attempt_count = 0
+                        while not self.execute_connect_to_host_procedure():
+                            attempt_count += 1
+                            self.logger.info("Reconnection Failed. Sleeping For 30 Seconds and Trying Again " +
+                                             "(Attempts: " + str(attempt_count) + ")")
+                            time.sleep(30)
+                        self.logger.info("Reconnection Successful. SYS.RESTART Complete")
 
                     else:
                         self.logger.info("Received Command Has Not Been Configured A Handling. Cannot Process Command")

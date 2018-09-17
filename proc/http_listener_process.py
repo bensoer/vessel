@@ -71,6 +71,14 @@ class HttpListenerProcess:
         def handle_internal_error(command):
             return jsonify(command), 500
 
+        @app.errorhandler(Exception)
+        def default_exception_handler(e):
+            self.logger.exception(e)
+            self.logger.info("Default Exception Handler Triggered. This Is Likely Fatal")
+            self._pipe_lock.release()
+            return 800
+
+
         @app.errorhandler(400)
         def bad_request(e):
 
