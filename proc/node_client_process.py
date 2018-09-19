@@ -191,6 +191,7 @@ class NodeClientProcess:
             self.logger.info(self._master_public_key)
 
             self.logger.info("Connection Secured")
+
         except:
             self.logger.exception("Connection With Master Node Failed. Aborting Processing")
             self.failed_initializing = True
@@ -256,13 +257,9 @@ class NodeClientProcess:
                     # TODO: Pass Message to node process to shut service down
                     exit()
 
+                command_dict = json.loads(command)
                 self.logger.info("COMMAND RECEIVED")
                 self.logger.info(command)
-
-                command_dict = json.loads(command)
-
-                self.logger.info("COMMAND RECEIVED 2")
-                self.logger.info(command_dict)
 
                 try:
 
