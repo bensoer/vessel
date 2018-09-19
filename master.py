@@ -112,10 +112,10 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         # send message to each node to disconnect, sleep and then start infinite reconnect attempts
         for node in all_nodes:
             action = dict()
-            action['command'] = "EXEC"
+            action['command'] = "SYS"
             action['from'] = "MASTER"
             action['to'] = "NODE"
-            action['params'] = "SYS.RESTART"
+            action['params'] = "RESTART"
             action['rawdata'] = (str(node.guid),)
 
             self.sendMessageToNodeProcess(action)

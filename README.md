@@ -76,10 +76,36 @@ and further communication continues with the AES key.
 In order to avoid issues with data in transit, all data is also Base64 encoded before sent over the internet to avoid
 read and write issues on the end systems.
 
+## Vessel Internal Command Codes:
+The following are command codes used for communication between processes and nodes. It is a CRUD-like system that
+abstracts communication internally from outside interactions. This allows for commands passed in by HTTP or Terminal
+or internally to be able to translate and communicate the same and then translate back to their desired format
+(HTTP as JSON, Terminal as text, etc). The purpose is to document the commands for consistency within the
+application and to help developers pickup on application structure
+
+GET - For fetching information from nodes
+- SCRIPTS - Fetch scripts on a node. The data is fetched from the database on the node
+- PING - Fetch general node information and meta
+- DEPLOYMENTS - Fetch deployment information
+
+EXEC - For executing on nodes
+- SCAN.SCRIPTS - Rescan the file system for scripts data. Works same as GET SCRIPTS except reads from the file-system
+and updates the database afterwards
+- DEPLOYMENTS.EXECUTE - Executes a deployment which is a group of scripts in a specific order
+- SCRIPTS.EXECUTE - Executes a script
+
+MIG - Migrates scripts from master to node and vise-versa
+
+CREATE - For creating resources
+- DEPLOYMENT - Creates a deployment record
+
+SYS - For internal communication passing between processes and nodes
+- RESTART - Sent from Master to Node to make node disconnect and start reconnect cycles
+- CONN.CLOSE - Sent from Node to Master to tell Master node is gracefully closing and to terminate the connection on its side
+
+ERROR - For errors with any of the above commands
 
 ## Resources
 Install Python Non-Interactively:
 https://www.python.org/download/releases/2.5/msi/
 
-## TODO
-- Documentation on the various types of commands so that patterns can be established

@@ -64,7 +64,7 @@ class NodeClientProcess:
 
         self.logger.info("Connection Complete")
 
-    def _send_message(self, message:str, encrypt_with_key=None):
+    def _send_message(self, message:str, encrypt_with_key=None)->int:
         try:
             if encrypt_with_key is not None:
 
@@ -78,10 +78,10 @@ class NodeClientProcess:
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
                 return self._client_socket.send(message.encode())
-        except error as se:
+        except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
-                    "Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
+                    "Connection Reset Detected While Trying To Send Message. Attempting Connection Reestablishment")
 
                 # close socket
                 try:
@@ -93,11 +93,21 @@ class NodeClientProcess:
                 except:
                     pass
 
-            reconnect_succeeded = self.execute_connect_to_host_procedure()
-            if not reconnect_succeeded:
-                self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
+                reconnect_succeeded = self.execute_connect_to_host_procedure()
+                if not reconnect_succeeded:
+                    self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
+                    # TODO: Pass Message to node process to shut service down
 
-    def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
+                    exit()
+                    return 0
+                else:
+                    return self._send_message(message, encrypt_with_key=encrypt_with_key)
+            else:
+                self.logger.info("An OSError Was Thrown While Trying To Send Message")
+                self.logger.info(se)
+                return 0
+
+    def _recv_message(self, buffer_size, decrypt_with_key_pass=None):
         try:
 
             raw_message: bytes = b''
@@ -123,7 +133,7 @@ class NodeClientProcess:
             else:
                 return self._client_socket.recv(buffer_size).decode('utf8')
 
-        except error as se:
+        except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info("Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
 
@@ -137,10 +147,13 @@ class NodeClientProcess:
                 except:
                     pass
 
-            reconnect_succeeded = self.execute_connect_to_host_procedure()
-            if not reconnect_succeeded:
-                self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
-                exit(1)
+                reconnect_succeeded = self.execute_connect_to_host_procedure()
+                if not reconnect_succeeded:
+                    self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
+                    return None
+            else:
+                self.logger.info("An OSError Was Thrown While Trying To Receive Message")
+                self.logger.info(se)
                 return None
 
     def execute_connect_to_host_procedure(self)->bool:
@@ -160,6 +173,11 @@ class NodeClientProcess:
             self.logger.info("Connection Established With Master. Securing Connection With Keys")
 
             self._master_public_key = self._recv_message(2048)
+            if self._master_public_key is None:
+                self.logger.fatal("Failed To Receive Master Node Public Key. Terminating")
+                # TODO: Pass Message to node process to shut service down
+                exit()
+
             aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
                                                                         self._node_private_key,
                                                                         self._private_key_password)
@@ -231,6 +249,13 @@ class NodeClientProcess:
                 command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key,
                                                                           self._private_key_password,
                                                                           self._node_aes_key))
+
+                if command is None:
+                    self.logger.error("Failed To Receive Command. Disconnection From Master Likely Occurred. Can't "
+                                      "Process Command")
+                    # TODO: Pass Message to node process to shut service down
+                    exit()
+
                 self.logger.info("COMMAND RECEIVED")
                 self.logger.info(command)
 
@@ -344,7 +369,7 @@ class NodeClientProcess:
                         response = dict()
                         response["to"] = "MASTER"
                         response["from"] = command_dict["to"]
-                        response["command"] = "EXEC"
+                        response["command"] = "SYS"
                         response["param"] = "CONN.CLOSE"
                         response["rawdata"] = command_dict["rawdata"]
 

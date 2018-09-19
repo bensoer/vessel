@@ -38,6 +38,9 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
         elif command['command'] == 'CREATE':
             node_guid = command['rawdata'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+        elif command['command'] == 'SYS':
+            node_guid = command['rawdata'][0]
+            send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
 
         # if the send fails or not of the IFs meet - then return an error back so the client can be informed
         if not send_success:
@@ -85,7 +88,7 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
 
             command_dict = json.loads(command)
 
-            if command_dict["command"] == "EXEC" and command_dict["to"] == "MASTER" \
+            if command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" \
                     and command_dict["param"] == "CONN.CLOSE":
                 # this means the remote node is gracefully exiting. We should treate this as if it disconnected
                 logging_queue.put("Graceful Disconnect From Node Detected. Throwing Exception To Trigger Disconnection")
