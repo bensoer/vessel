@@ -40,7 +40,9 @@ def pipe_recv_handler(master_process, parent_pipe):
         elif message_for == "MASTER":
             answer = master_process.handle_master_requests(command)
             # send the answer back wherever it came (most likely the http)
-            parent_pipe.send(answer)
+            # send answer if it is not None
+            if answer is not None:
+                parent_pipe.send(answer)
         else:
             master_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
 
@@ -114,7 +116,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             action['from'] = "MASTER"
             action['to'] = "NODE"
             action['params'] = "SYS.RESTART"
-            action['rawdata'] = (node.guid,)
+            action['rawdata'] = (str(node.guid),)
 
             self.sendMessageToNodeProcess(action)
 
@@ -141,6 +143,14 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self.main()
 
     def handle_master_requests(self, command):
+
+        # TODO: This is called if there is an error made by a request sent by master process. If master process
+        # TODO: makes calls using the pipes, it would be able to wait at the calling code point for the response
+        # TODO: this may be more ideal ??
+        if command['command'] == "ERROR":
+            self._logger.error("Error Command Received")
+            self._logger.error(command)
+            return None
 
         if command['command'] == "EXEC" and command['params'] == "SCAN.SCRIPTS":
             sqlite_manager = SQLiteManager(self._config, self._logger)

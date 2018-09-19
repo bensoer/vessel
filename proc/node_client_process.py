@@ -96,7 +96,6 @@ class NodeClientProcess:
             reconnect_succeeded = self.execute_connect_to_host_procedure()
             if not reconnect_succeeded:
                 self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
-                exit(1)
 
     def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
         try:
@@ -340,6 +339,20 @@ class NodeClientProcess:
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "SYS.RESTART":
                         self.logger.info("Master Node Restart Request Received. Disconnecting and Starting "
                                          "Reconnect Loop")
+
+                        # send back a clean exit
+                        response = dict()
+                        response["to"] = "MASTER"
+                        response["from"] = command_dict["to"]
+                        response["command"] = "EXEC"
+                        response["param"] = "CONN.CLOSE"
+                        response["rawdata"] = command_dict["rawdata"]
+
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
 
                         # disconnect from master. Sleep for 2 minutes, then start reconnecting
                         try:

@@ -1,6 +1,5 @@
 from socket import *
 import errno
-import select
 from db.models.Node import Node
 from db.models.Key import Key
 import logging
@@ -52,9 +51,6 @@ def pipe_recv_handler(node_listener_process, logging_queue, child_pipe):
             child_pipe.send(error_response)
 
 
-
-
-
 def socket_recv_handler(node_listener_process, logging_queue, node_socket, child_pipe):
     logging_queue.put("Starting Socket Receive Handler")
     while True:
@@ -85,15 +81,23 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                                                                         node_listener_process.private_key_password)
 
             command = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
-
-            logging_queue.put("COMMAND RECEIVED FROM SOCKET")
-            logging_queue.put(command)
+            logging_queue.put("Command Received From Socket: " + str(command))
 
             command_dict = json.loads(command)
-            child_pipe.send(command_dict)
-        except error as se:
+
+            if command_dict["command"] == "EXEC" and command_dict["to"] == "MASTER" \
+                    and command_dict["param"] == "CONN.CLOSE":
+                # this means the remote node is gracefully exiting. We should treate this as if it disconnected
+                logging_queue.put("Graceful Disconnect From Node Detected. Throwing Exception To Trigger Disconnection")
+                os_error = OSError()
+                os_error.errno = errno.ECONNRESET
+                raise os_error
+            else:
+                child_pipe.send(command_dict)
+
+        except OSError as se:
             if se.errno == errno.ECONNRESET:
-                logging_queue.put("Connection Reset Detected. Failed To Send Message To Node. Node Does Not Exist")
+                logging_queue.put("Connection Reset Detected. Failed To Receive Message From Node. Node Does Not Exist")
 
                 # cleanup socket information on our side
                 try:
@@ -105,20 +109,26 @@ def socket_recv_handler(node_listener_process, logging_queue, node_socket, child
                 except:
                     pass
 
+                logging_queue.put("Removing Socket From Mappings")
                 address = node_listener_process.socketmap2portip[node_socket]
                 ip, port = address
                 node_listener_process.portipmap2socket.pop(ip+":"+str(port), None)
                 node_listener_process.connections.pop(node_socket.fileno(), None)
 
+                logging_queue.put("Removing Socket From Database")
                 sql_manager = SQLiteManager(node_listener_process._config, node_listener_process.logger)
                 node = sql_manager.getNodeOfIpAndPort(ip, port)
 
                 sql_manager.deleteKeyOfGuid(node.key_guid)
                 sql_manager.deleteNodeOfGuid(node.guid)
 
+                logging_queue.put("Removing Socket From Last Mapping")
                 node_listener_process.socketmap2portip.pop(node_socket, None)
                 logging_queue.put("Diconnection Process Of Node Complete. Terminating Socket Receive Handler Thread")
                 break
+            else:
+                logging_queue.put("Other Error Thrown")
+                logging_queue.put(se.strerror)
         finally:
             sql_manager.closeEverything()
 
@@ -160,7 +170,7 @@ class NodeListenerProcess:
         max_file_size = self._config["LOGGING"]["max_file_size"]
         max_file_count = self._config["LOGGING"]["max_file_count"]
         handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter('%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
@@ -170,14 +180,19 @@ class NodeListenerProcess:
 
         self.logger.info("Connection Complete")
 
-    def forwardCommandToAppropriateNode(self, command, node_guid: str):
+    def forwardCommandToAppropriateNode(self, command, node_guid: str)->bool:
         self.logging_queue.put("Now Attempting Forwarding Command To Appropriate Node")
         self.logging_queue.put(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
         sql_manager = SQLiteManager(self._config, self.logger)
         node = sql_manager.getNodeOfGuid(str(node_guid))
         self.logging_queue.put("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
-        node_socket2 = self.portipmap2socket[node.ip + ":" + str(node.port)]
+        node_socket2 = self.portipmap2socket.get(node.ip + ":" + str(node.port), None)
+        self.logging_queue.put("Socket: " + str(node_socket2))
+
+        if node_socket2 is None:
+            self.logging_queue.put("WARNING: IP and Port Mapping Did Not Resolve To A Socket. Can't Forward Command")
+            return False
 
         serialized_command = json.dumps(command)
         self.logging_queue.put("Serialized Command: >" + str(serialized_command) + "<")
@@ -210,17 +225,24 @@ class NodeListenerProcess:
                 except:
                     pass
 
+                self.logging_queue.put("Removing Socket From Mappings")
                 self.portipmap2socket.pop(node.ip+":"+str(node.port), None)
                 self.connections.pop(node_socket2, None)
 
+                self.logging_queue.put("Removing Socket From Database")
                 sql_manager.deleteKeyOfGuid(node.key_guid)
                 sql_manager.deleteNodeOfGuid(node.guid)
                 sql_manager.closeEverything()  # can't use sql_manager after this
 
+                self.logging_queue.put("Removing Socket From Last Mapping")
                 self.socketmap2portip.pop(node_socket2, None)
 
                 # return False to tell caller
                 return False
+            else:
+                self.logging_queue.put("ERROR: Unknown Socket Error Occured In Node Listener Process. Error Code " + str(se.errno))
+                self.logging_queue.put("Error Details: " + se.strerror)
+                self.logging_queue.put(se)
         finally:
             sql_manager.closeEverything()  # can't use sql_manager after this
 
@@ -278,6 +300,10 @@ class NodeListenerProcess:
                 node_socket, address = listener_socket.accept()
                 self.logging_queue.put("New Connection Detected. Processing And Adding To System")
 
+                self.logging_queue.put("Enabling Keep Alive Policy In New Connection")
+                node_socket.ioctl(SIO_KEEPALIVE_VALS, (1, 10000, 3000))
+
+                self.logging_queue.put("Updating Memory Mappings For New Connection")
                 # add mapping table records
                 self.connections[node_socket.fileno()] = node_socket
                 self.socketmap2portip[node_socket] = address
