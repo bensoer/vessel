@@ -6,7 +6,7 @@ import configparser
 import os
 import inspect
 import logging
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Queue
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 from proc.node_listener_process import NodeListenerProcess
@@ -16,6 +16,7 @@ import threading
 import utils.taskrunner as taskrunner
 import utils.script_manager as sm
 import time
+import utils.logging as logutils
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
@@ -70,8 +71,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     shutdown_occurring = False
     shutdown_processing_complete = False
 
-
-    def __init__(self,args):
+    def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self,args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
 
@@ -82,15 +82,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self._root_dir = self._config["DEFAULT"]["root_dir"]
         self._script_dir = self._config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
-
-        log_path = self._log_dir + "/master-service.log"
-
-        self._logger = logging.getLogger(self._svc_name_)
-        self._logger.setLevel(logging.DEBUG)
-        handler = RotatingFileHandler(log_path, maxBytes=4096, backupCount=10)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self._logger.addHandler(handler)
+        logutils.initialize_all_logging_configuration(self._log_dir)
+        self._logger = logutils.master_logger
 
 
     def SvcStop(self):
@@ -197,7 +190,9 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self.terminal_parent_pipe = terminal_parent_pipe
             self._logger.info("Now Creating TerminalListenerProcess Class")
             self._logger.info("Now Creating Process With Boostrapper")
-            self._terminal_process = Process(target=bootstrapper, args=(TerminalListenerProcess, (terminal_child_pipe, self._config)))
+            self._terminal_process = Process(target=bootstrapper, args=(TerminalListenerProcess, (terminal_child_pipe,
+                                                                                                  self._config,
+                                                                                                  logutils.logging_queue)))
             self._logger.info("Now Starting Process")
             self._terminal_process.start()
             self._logger.info("Termina Process Has Started Running")
@@ -216,7 +211,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self._logger.info("Now Creating NodeListenerProcess Class")
             #node_listener = NodeListenerProcess(to_parent_pipe, to_child_pipe, self._config)
             self._logger.info("Now Creating Process With BootStrapper")
-            self._node_process = Process(target=bootstrapper, args=(NodeListenerProcess,(node_child_pipe, self._config)))
+            self._node_process = Process(target=bootstrapper, args=(NodeListenerProcess,(node_child_pipe, self._config,
+                                                                                         logutils.logging_queue)))
             self._logger.info("Now Starting Process")
             self._node_process.start()
             self._logger.info("Http Process Has Started Running")
@@ -233,7 +229,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self.http_parent_pipe = http_parent_pipe
             self._logger.info("Now Creating HttpListenerProcess Class")
             self._logger.info("Now Creating Process With Bootstrapper")
-            self._http_process = Process(target=bootstrapper, args=(HttpListenerProcess, (http_child_pipe, self._config)))
+            self._http_process = Process(target=bootstrapper, args=(HttpListenerProcess, (http_child_pipe, self._config,
+                                                                                          logutils.logging_queue)))
             self._logger.info("Now Starting Http Process")
             self._http_process.start()
             self._logger.info("Http Process Has Started Running")
@@ -263,6 +260,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         h_thread.daemon = True
         h_thread.start()
 
+        # spawn logging thread
+        l_thread = logutils.start_logging_thread()
 
         rc = None
         while rc != win32event.WAIT_OBJECT_0:

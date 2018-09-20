@@ -26,7 +26,7 @@ class HttpListenerProcess:
     _use_ssl = False
 
     def __init__(self, initialization_tuple):
-        child_pipe, config = initialization_tuple
+        child_pipe, config, logging_queue = initialization_tuple
 
         self.child_pipe = child_pipe
         self._pipe_lock = Lock()
@@ -45,22 +45,16 @@ class HttpListenerProcess:
 
         self._cert_path = config["DEFAULT"].get("cert_path", None)
         self._key_path = config["DEFAULT"].get("key_path", None)
-
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/master-http.log"
 
-        self.logger = logging.getLogger("HttpListenerProcess")
+        # setup logging for process
+        qh = logging.handlers.QueueHandler(logging_queue)
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        root.addHandler(qh)
+
+        self.logger = logging.getLogger("HttpListenerProcessLogger")
         self.logger.setLevel(logging.DEBUG)
-        max_file_size = config["LOGGING"]["max_file_size"]
-        max_file_count = config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-
-        self.logger.info("HttpListenerProcess Initialized. Creating Connection To SQL DB")
-
-        #self._sql_manager = SQLiteManager(config, self.logger)
 
         self.logger.info("Connection Complete")
 

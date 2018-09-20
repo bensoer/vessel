@@ -1,7 +1,5 @@
 from socket import *
-import select
 import errno
-from db.models.Node import Node
 import logging
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
@@ -10,12 +8,9 @@ import utils.vesselhelper as vh
 import utils.script_manager as sm
 from db.models.Key import Key
 import json
-from db.models.Script import Script
-import uuid
-import subprocess
-from subprocess import CalledProcessError
 import utils.taskrunner as taskrunner
 import time
+
 
 class NodeClientProcess:
 
@@ -33,7 +28,7 @@ class NodeClientProcess:
     failed_initializing = False
 
     def __init__(self, initialization_tuple):
-        child_pipe, config = initialization_tuple
+        child_pipe, config, logging_queue = initialization_tuple
 
         self.child_pipe = child_pipe
         self._config = config
@@ -47,16 +42,15 @@ class NodeClientProcess:
         self._script_dir = config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/node-client.log"
 
-        self.logger = logging.getLogger("NodeClientProcess")
+        # setup logging
+        qh = logging.handlers.QueueHandler(logging_queue)
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        root.addHandler(qh)
+
+        self.logger = logging.getLogger("NodeListenerProcessLogger")
         self.logger.setLevel(logging.DEBUG)
-        max_file_size = config["LOGGING"]["max_file_size"]
-        max_file_count = config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
         self.logger.info("NodeListenerProcess Inialized. Creating Connection To SQL DB")
 
@@ -96,7 +90,13 @@ class NodeClientProcess:
                 reconnect_succeeded = self.execute_connect_to_host_procedure()
                 if not reconnect_succeeded:
                     self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
-                    # TODO: Pass Message to node process to shut service down
+
+                    action = dict()
+                    action['command'] = "SYS"
+                    action['from'] = "CLIENT"
+                    action['to'] = "NODE"
+                    action['params'] = "SHUTDOWN"
+                    self.child_pipe.send(action)
 
                     exit()
                     return 0
@@ -176,6 +176,14 @@ class NodeClientProcess:
             if self._master_public_key is None:
                 self.logger.fatal("Failed To Receive Master Node Public Key. Terminating")
                 # TODO: Pass Message to node process to shut service down
+
+                action = dict()
+                action['command'] = "SYS"
+                action['from'] = "CLIENT"
+                action['to'] = "NODE"
+                action['params'] = "SHUTDOWN"
+                self.child_pipe.send(action)
+
                 exit()
 
             aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
@@ -254,7 +262,14 @@ class NodeClientProcess:
                 if command is None:
                     self.logger.error("Failed To Receive Command. Disconnection From Master Likely Occurred. Can't "
                                       "Process Command")
-                    # TODO: Pass Message to node process to shut service down
+
+                    action = dict()
+                    action['command'] = "SYS"
+                    action['from'] = "CLIENT"
+                    action['to'] = "NODE"
+                    action['params'] = "SHUTDOWN"
+                    self.child_pipe.send(action)
+
                     exit()
 
                 command_dict = json.loads(command)

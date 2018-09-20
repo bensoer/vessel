@@ -102,6 +102,7 @@ CREATE - For creating resources
 SYS - For internal communication passing between processes and nodes
 - RESTART - Sent from Master to Node to make node disconnect and start reconnect cycles
 - CONN.CLOSE - Sent from Node to Master to tell Master node is gracefully closing and to terminate the connection on its side
+- SHUTDOWN - Sent to main thread to stop process and start shutdown
 
 ERROR - For errors with any of the above commands
 

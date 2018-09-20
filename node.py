@@ -11,6 +11,24 @@ from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 from proc.node_client_process import NodeClientProcess
 import utils.script_manager as sm
+import utils.logging as logutils
+
+def pipe_recv_handler(node_process, parent_pipe):
+    node_process._logger.info("Node Pipe Recv Handler Spawned. Listening For Messages")
+    while True:
+        command = parent_pipe.recv()
+        node_process._logger.info("Received Command: " + str(command))
+
+        message_for = command["to"]
+
+        if message_for == "NODE":
+            answer = node_process.handle_node_requests(command)
+            # send the answer back wherever it came (most likely the http)
+            # send answer if it is not None
+            if answer is not None:
+                parent_pipe.send(answer)
+        else:
+            node_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
@@ -39,18 +57,10 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
 
         self._log_dir = self._config["LOGGING"]["log_dir"]
         self._root_dir = self._config["DEFAULT"]["root_dir"]
-        log_path = self._log_dir + "/node-service.log"
-
         self._script_dir = self._config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
-        self._logger = logging.getLogger(self._svc_name_)
-        self._logger.setLevel(logging.DEBUG)
-        max_file_size = self._config["LOGGING"]["max_file_size"]
-        max_file_count = self._config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self._logger.addHandler(handler)
+        logutils.initialize_all_logging_configuration(self._log_dir)
+        self._logger = logutils.node_logger
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -65,6 +75,12 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         self._logger.info("Service Is Starting")
         self.main()
 
+    def handle_node_requests(self, command):
+
+        if command["command"] == "SYS" and command["param"] == "SHUTDOWN":
+            self._logger.info("Shutdown Request Received. Terminating Node")
+            self.SvcStop()
+            return None
 
     def main(self):
 
@@ -86,7 +102,7 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
             # node_listener = NodeListenerProcess(to_parent_pipe, to_child_pipe, self._config)
             self._logger.info("Now Creating Process With BootStrapper")
             self._node_process = Process(target=bootstrapper,
-                                         args=(NodeClientProcess, (child_pipe, self._config)))
+                                         args=(NodeClientProcess, (child_pipe, self._config, logutils.logging_queue)))
             self._logger.info("Now Starting Process")
             self._node_process.start()
             self._logger.info("Node Process Has Started Running")
@@ -97,6 +113,9 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
             return
 
         # create process for listening for http connections
+
+        # start logging thread
+        l_thread = logutils.start_logging_thread()
 
         rc = None
         while rc != win32event.WAIT_OBJECT_0:
