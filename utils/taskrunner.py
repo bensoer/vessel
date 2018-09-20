@@ -57,25 +57,48 @@ def get_ping_info(request, config):
 
     return request
 
+def _get_full_path_to_script_engine(script_engine, logger):
 
-def _get_execute_params_for_engine(script_engine, file_path, file_name):
+    try:
+        process = subprocess.run(["where", script_engine], shell=True, check=True,
+                                 stderr=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 encoding="utf-8")
+        process.check_returncode()
+
+        full_script_engine_path = process.stdout.split('\n')[0] # if we find multiple, we just take the first one
+        full_script_engine_path = full_script_engine_path.rstrip()
+
+        return full_script_engine_path
+
+    except CalledProcessError as cpe:
+        logger.exception("Error Occurred Trying To Resolve Full Path To Script Engine")
+        return script_engine
+
+
+def _get_execute_params_for_engine(script_engine, file_path, file_name, logger):
 
     absolute_file_path = file_path + os.sep + file_name
 
     script_engine_to_params = {
-        'python': ['python', absolute_file_path],
-        'powershell': ['powershell.exe', '-ExecutionPolicy', 'RemoteSigned', '-F', absolute_file_path],
+        'python': [_get_full_path_to_script_engine(script_engine, logger), absolute_file_path],
+
+        'powershell': [_get_full_path_to_script_engine(script_engine, logger), '-ExecutionPolicy', 'RemoteSigned',
+                        '-F', absolute_file_path],
+
         'batch': [absolute_file_path],
-        'node': ['node', absolute_file_path],
+
+        'node': [_get_full_path_to_script_engine(script_engine, logger), absolute_file_path],
+
         'exe': [absolute_file_path]
     }
 
     return script_engine_to_params.get(script_engine, [absolute_file_path])
 
+
 def execute_script(script, logger):
 
     try:
-        script_execute_list = _get_execute_params_for_engine(script.script_engine, script.file_path, script.file_name)
+        script_execute_list = _get_execute_params_for_engine(script.script_engine, script.file_path, script.file_name, logger)
         # execute the script
         process = subprocess.run(script_execute_list, shell=True,
                                  check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
