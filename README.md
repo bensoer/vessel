@@ -93,6 +93,9 @@ EXEC - For executing on nodes
 and updates the database afterwards
 - DEPLOYMENTS.EXECUTE - Executes a deployment which is a group of scripts in a specific order
 - SCRIPTS.EXECUTE - Executes a script
+- FAILED.NOTFOUND - Vessel system processed everything fine. However the request script was not found on the executing node
+- FAILED - Vessel system processed everything fine. However the script executed error'd or failed to execute
+- SUCCESS - Vessel system processed everything fine. Script executed ran successfully
 
 MIG - Migrates scripts from master to node and vise-versa
 
@@ -104,7 +107,7 @@ SYS - For internal communication passing between processes and nodes
 - CONN.CLOSE - Sent from Node to Master to tell Master node is gracefully closing and to terminate the connection on its side
 - SHUTDOWN - Sent to main thread to stop process and start shutdown
 
-ERROR - For errors with any of the above commands
+ERROR - For errors with the Vessel system and its execution
 
 ## Resources
 Install Python Non-Interactively:

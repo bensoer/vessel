@@ -29,20 +29,17 @@ version=1.0.0
 db_dir=C:\vessel\db
 
 [NODELISTENER]
-# master configuration - specify the logging location, port and ip to listen for incoming connections from nodes
-log_dir=C:\vessel\logs
+# master configuration - specify the port and ip to listen for incoming connections from nodes
 port=5026
 bind_ip=0.0.0.0
 
 [TERMINALLISTENER]
-# master configuration - specify the logging location, port and ip to listen for incoming terminal connections
-log_dir=C:\vessel\logs
+# master configuration - specify the port and ip to listen for incoming terminal connections
 port=5025
 bind_ip=0.0.0.0
 
 [HTTPLISTENER]
-# master configuration - specify the logging location, port and ip to listen for incoming http requests
-log_dir=C:\vessel\logs
+# master configuration - specify the port and ip to listen for incoming http requests
 port=5024
 bind_ip=0.0.0.0
 
