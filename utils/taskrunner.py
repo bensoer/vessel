@@ -57,48 +57,30 @@ def get_ping_info(request, config):
 
     return request
 
-def _get_full_path_to_script_engine(script_engine, logger):
+# TODO: Add support for user_engines !!
+def _get_execute_params_for_engine(engine, script):
 
-    try:
-        process = subprocess.run(["where", script_engine], shell=True, check=True,
-                                 stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                                 encoding="utf-8")
-        process.check_returncode()
-
-        full_script_engine_path = process.stdout.split('\n')[0] # if we find multiple, we just take the first one
-        full_script_engine_path = full_script_engine_path.rstrip()
-
-        return full_script_engine_path
-
-    except CalledProcessError as cpe:
-        logger.exception("Error Occurred Trying To Resolve Full Path To Script Engine")
-        return script_engine
-
-
-def _get_execute_params_for_engine(script_engine, file_path, file_name, logger):
-
-    absolute_file_path = file_path + os.sep + file_name
+    absolute_file_path = script.file_path + os.sep + script.file_name
 
     script_engine_to_params = {
-        'python': [_get_full_path_to_script_engine(script_engine, logger), absolute_file_path],
+        'python': [engine.path, absolute_file_path],
 
-        'powershell': [_get_full_path_to_script_engine(script_engine, logger), '-ExecutionPolicy', 'RemoteSigned',
+        'powershell': [engine.path, '-ExecutionPolicy', 'RemoteSigned',
                         '-F', absolute_file_path],
 
         'batch': [absolute_file_path],
 
-        'node': [_get_full_path_to_script_engine(script_engine, logger), absolute_file_path],
+        'node': [engine.path, absolute_file_path],
 
         'exe': [absolute_file_path]
     }
 
-    return script_engine_to_params.get(script_engine, [absolute_file_path])
+    return script_engine_to_params.get(engine.name, [absolute_file_path])
 
 
-def execute_script(script, logger):
+def execute_script(script_execute_list, logger):
 
     try:
-        script_execute_list = _get_execute_params_for_engine(script.script_engine, script.file_path, script.file_name, logger)
         # execute the script
         process = subprocess.run(script_execute_list, shell=True,
                                  check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -116,7 +98,6 @@ def execute_script(script, logger):
                     parsed_output[key] = value
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = parsed_output
         rawdata["data"] = (process.stdout, process.stderr, process.returncode)
 
@@ -126,7 +107,6 @@ def execute_script(script, logger):
         logger.exception("A CalledProcessError Occurred")
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = dict()
         rawdata["data"] = (cpe.stdout, cpe.stderr, cpe.returncode)
 
@@ -137,7 +117,6 @@ def execute_script(script, logger):
         logger.error("An OS Error Occurred")
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = dict()
         rawdata["data"] = (ose.strerror, ose.strerror, ose.errno)
 
@@ -152,7 +131,11 @@ def execute_script_on_node(sql_manager, request, logger):
     for script in all_scripts:
         if script.guid == uuid.UUID(script_guid):
 
-            succesful, results_data = execute_script(script, logger)
+            # figure out execution parameters here
+            engine = sql_manager.getEngineOfName(script.script_engine)
+            execution_params = _get_execute_params_for_engine(engine, script)
+
+            succesful, results_data = execute_script(execution_params, logger)
 
             if succesful:
                 old_from = request['from']

@@ -34,7 +34,7 @@ class HttpListenerProcess:
         self._config = config
         self._port = config["HTTPLISTENER"]["port"]
         self._bind_ip = config["HTTPLISTENER"]["bind_ip"]
-        self._log_dir = config["HTTPLISTENER"]["log_dir"]
+        self._log_dir = config["LOGGING"]["log_dir"]
         self._root_dir = config["DEFAULT"]["root_dir"]
         #self._vessel_version = config["META"]["version"]
 

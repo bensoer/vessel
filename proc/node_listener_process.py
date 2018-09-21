@@ -164,7 +164,7 @@ class NodeListenerProcess:
 
         self._port = config["NODELISTENER"]["port"]
         self._bind_ip = config["NODELISTENER"]["bind_ip"]
-        self._log_dir = config["NODELISTENER"]["log_dir"]
+        self._log_dir = config["LOGGING"]["log_dir"]
         self.private_key_password = config["DEFAULT"]["private_key_password"]
         #log_path = self._log_dir + "/master-node.log"
 

@@ -31,7 +31,7 @@ class TerminalListenerProcess:
 
         self._port = config["TERMINALLISTENER"]["port"]
         self._bind_ip = config["TERMINALLISTENER"]["bind_ip"]
-        self._log_dir = config["TERMINALLISTENER"]["log_dir"]
+        self._log_dir = config["LOGGING"]["log_dir"]
         self._private_key_password = config["DEFAULT"]["private_key_password"]
 
         qh = logging.handlers.QueueHandler(logging_queue)

@@ -90,6 +90,8 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         sqlite_manager = SQLiteManager(self._config, self._logger)
 
         # catalogue all the scripts in the system
+        self._logger.info("Catalogueing Engines On The System")
+        sm.catalogue_local_engines(sqlite_manager, self._logger)
         self._logger.info("Catalogueing Scripts On The System")
         sm.catalogue_local_scripts(sqlite_manager, self._script_dir, self._logger)
 

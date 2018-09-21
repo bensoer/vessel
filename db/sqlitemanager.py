@@ -5,6 +5,7 @@ from db.models.Script import Script
 from db.models.Node import Node
 from db.models.Deployment import Deployment
 from db.models.DeploymentScript import DeploymentScript
+from db.models.Engine import Engine
 
 class SQLiteManager:
 
@@ -38,6 +39,9 @@ class SQLiteManager:
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS deployment_scripts
                             (id INTEGER PRIMARY KEY, guid TEXT, deployment INTEGER, script INTEGER, priority INTEGER)''')
 
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS engines
+                            (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, path TEXT)''')
+
         self._conn.commit()
 
     def closeEverything(self):
@@ -47,6 +51,69 @@ class SQLiteManager:
         except:
             self._logger.exception("SQLiteManager - Exception Was Thrown While Shutting Down the SQLite Connection. " +
                                    "But Were Shutting Down - So Do We Care ?")
+
+    def insertEngine(self, engine):
+
+        guid = engine.guid
+        if engine.guid == None:
+            guid = uuid.uuid4()
+
+        name = engine.name
+        path = engine.path
+
+        query = "INSERT INTO engines (guid, [name], path) VALUES ('{guid}', '{name}', '{path}')"
+        query = query.format(guid=guid, name=name, path=path)
+
+        self._logger.info("SQLiteManager - Inserting Engine Record")
+        self._cursor.execute(query)
+
+        engine.id = self._cursor.lastrowid
+        self._conn.commit()
+
+        return engine
+
+    def getAllEngines(self):
+        query = "SELECT id, guid, name, path FROM engines"
+
+        self._logger.info("SQLiteManager - Getting All Engines")
+        self._cursor.execute(query)
+
+        all_engines = list()
+        for engine in self._cursor.fetchall():
+            engine_model = Engine()
+            engine_model.id = engine[0]
+            engine_model.guid = uuid.UUID(engine[1])
+            engine_model.name = engine[2]
+            engine_model.path = engine[3]
+
+            all_engines.append(engine_model)
+
+        return all_engines
+
+    def getEngineOfGuid(self, engine_guid):
+        self._logger.info("SQLiteManager - Getting Engine Of Guid: " + str(engine_guid))
+
+        all_engines = self.getAllEngines()
+        for engine in all_engines:
+            if engine.guid == uuid.UUID(str(engine_guid)):
+                return engine
+        return None
+
+    def getEngineOfName(self, engine_name):
+        self._logger.info("SQLiteManager - Getting Engine Of Name: " + str(engine_name))
+
+        all_engines = self.getAllEngines()
+        for engine in all_engines:
+            if engine.name == engine_name:
+                return engine
+        return None
+
+    def deleteEngineOfGuid(self, engine_guid):
+
+        query = "DELETE FROM engine WHERE guid = '" + str(engine_guid) + "'"
+        self._cursor.execute(query)
+        self._conn.commit()
+
 
     def insertNode(self, node):
 
