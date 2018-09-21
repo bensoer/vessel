@@ -64,7 +64,7 @@ class SQLiteManager:
         query = "INSERT INTO engines (guid, [name], path) VALUES ('{guid}', '{name}', '{path}')"
         query = query.format(guid=guid, name=name, path=path)
 
-        self._logger.info("SQLiteManager - Inserting Engine Record")
+        self._logger.debug("SQLiteManager - Inserting Engine Record")
         self._cursor.execute(query)
 
         engine.id = self._cursor.lastrowid
@@ -75,7 +75,7 @@ class SQLiteManager:
     def getAllEngines(self):
         query = "SELECT id, guid, name, path FROM engines"
 
-        self._logger.info("SQLiteManager - Getting All Engines")
+        self._logger.debug("SQLiteManager - Getting All Engines")
         self._cursor.execute(query)
 
         all_engines = list()
@@ -91,7 +91,7 @@ class SQLiteManager:
         return all_engines
 
     def getEngineOfGuid(self, engine_guid):
-        self._logger.info("SQLiteManager - Getting Engine Of Guid: " + str(engine_guid))
+        self._logger.debug("SQLiteManager - Getting Engine Of Guid: " + str(engine_guid))
 
         all_engines = self.getAllEngines()
         for engine in all_engines:
@@ -100,7 +100,7 @@ class SQLiteManager:
         return None
 
     def getEngineOfName(self, engine_name):
-        self._logger.info("SQLiteManager - Getting Engine Of Name: " + str(engine_name))
+        self._logger.debug("SQLiteManager - Getting Engine Of Name: " + str(engine_name))
 
         all_engines = self.getAllEngines()
         for engine in all_engines:
@@ -130,7 +130,7 @@ class SQLiteManager:
         query = "INSERT INTO nodes (guid, name, ip, port, key_guid, state) VALUES ('{guid}', '{name}', '{ip}', '{port}', '{key_guid}', '{state}')"
         query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state)
 
-        self._logger.info("SQLiteManager - Inserting Node Record")
+        self._logger.debug("SQLiteManager - Inserting Node Record")
         self._cursor.execute(query)
 
         node.id = self._cursor.lastrowid
@@ -150,7 +150,7 @@ class SQLiteManager:
         query = "UPDATE nodes SET name='{name}', ip='{ip}', port='{port}', key_guid='{key_guid}', state='{state}' WHERE guid='{guid}'"
         query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state)
 
-        self._logger.info("SQLiteManager - Updating Node Record")
+        self._logger.debug("SQLiteManager - Updating Node Record")
         self._cursor.execute(query)
 
         self._conn.commit()
@@ -159,7 +159,7 @@ class SQLiteManager:
 
 
     def getNodeOfGuid(self, node_guid):
-        self._logger.info("SQLiteManager - Getting Node Of Guid: " + str(node_guid))
+        self._logger.debug("SQLiteManager - Getting Node Of Guid: " + str(node_guid))
 
         all_nodes = self.getAllNodes()
         for node in all_nodes:
@@ -169,7 +169,7 @@ class SQLiteManager:
         return None
 
     def getNodeOfIpAndPort(self, node_ip, node_port):
-        self._logger.info("SQLiteManager - Getting Node Of IP: " + node_ip + " And Port: " + str(node_port))
+        self._logger.debug("SQLiteManager - Getting Node Of IP: " + node_ip + " And Port: " + str(node_port))
 
         all_nodes = self.getAllNodes()
         for node in all_nodes:
@@ -180,14 +180,14 @@ class SQLiteManager:
 
 
     def deleteNodeOfGuid(self, node_guid):
-        self._logger.info("SQLiteManager - Deleting Node Of Guid: " + str(node_guid))
+        self._logger.debug("SQLiteManager - Deleting Node Of Guid: " + str(node_guid))
 
         query = "DELETE FROM nodes WHERE guid = '" + str(node_guid) + "'"
         self._cursor.execute(query)
         self._conn.commit()
 
     def deleteKeyOfGuid(self, key_guid):
-        self._logger.info("SQLiteManager - Deleting Key Of Guid: " + str(key_guid))
+        self._logger.debug("SQLiteManager - Deleting Key Of Guid: " + str(key_guid))
 
         query = "DELETE FROM keys WHERE guid = '" + str(key_guid) + "'"
         self._cursor.execute(query)
@@ -196,7 +196,7 @@ class SQLiteManager:
     def getAllNodes(self):
         query = "SELECT id, guid, name, ip, port, key_guid, state FROM nodes"
 
-        self._logger.info("SQLiteManager - Getting All Nodes")
+        self._logger.debug("SQLiteManager - Getting All Nodes")
         self._cursor.execute(query)
 
         all_nodes = list()
@@ -215,7 +215,7 @@ class SQLiteManager:
 
     def getKeyOfGuid(self, key_guid):
 
-        self._logger.info("SQLiteManager - Getting Key Of Guid: " + str(key_guid))
+        self._logger.debug("SQLiteManager - Getting Key Of Guid: " + str(key_guid))
         query = "SELECT id, guid, name, description, key FROM keys WHERE guid = '" + str(key_guid) + "'"
         self._cursor.execute(query)
         key = self._cursor.fetchone()
@@ -236,14 +236,14 @@ class SQLiteManager:
 
         query = "SELECT id, name, description, guid, key FROM keys WHERE name = '" + name + "'"
 
-        self._logger.info("SQLiteManager - Getting Key Of Name: " + name)
+        self._logger.debug("SQLiteManager - Getting Key Of Name: " + name)
         self._cursor.execute(query)
         key = self._cursor.fetchone()
 
         if key is None:
             return None
 
-        self._logger.info(key)
+        self._logger.debug(key)
 
         secure_key = Key()
         secure_key.key = key[4]
@@ -258,14 +258,14 @@ class SQLiteManager:
 
         query = "SELECT id, name, description, guid, key FROM keys WHERE id = " + str(key_id) + ""
 
-        self._logger.info("SQLiteManager - Getting Key Of Id: " + str(key_id))
+        self._logger.debug("SQLiteManager - Getting Key Of Id: " + str(key_id))
         self._cursor.execute(query)
         key = self._cursor.fetchone()
 
         if key is None:
             return None
 
-        self._logger.info(key)
+        self._logger.debug(key)
 
         secure_key = Key()
         secure_key.key = key[4]
@@ -290,7 +290,7 @@ class SQLiteManager:
         query = "INSERT INTO keys (guid, name, description, key) VALUES ('{guid}', '{name}', '{description}', '{key}')"
         query = query.format(guid=str(guid), name=name, description=description, key=secure_key)
 
-        self._logger.info("SQLiteManager - Inserting Key Record")
+        self._logger.debug("SQLiteManager - Inserting Key Record")
         self._cursor.execute(query)
 
         key_id = self._cursor.lastrowid
@@ -301,7 +301,7 @@ class SQLiteManager:
     def getAllScripts(self):
         query = "SELECT id, guid, file_name, script_engine, node_guid, file_path FROM scripts"
 
-        self._logger.info("SQLiteManager - Getting All Scripts")
+        self._logger.debug("SQLiteManager - Getting All Scripts")
         self._cursor.execute(query)
 
         all_scripts = list()
@@ -320,14 +320,14 @@ class SQLiteManager:
     def deleteScriptOfId(self, script_id):
         query = "DELETE FROM scripts WHERE id = " + str(script_id)
 
-        self._logger.info("SQLiteManager - Deleting Script Of id: " + str(script_id))
+        self._logger.debug("SQLiteManager - Deleting Script Of id: " + str(script_id))
         self._cursor.execute(query)
         self._conn.commit()
 
     def getScriptOfGuid(self, script_guid):
         query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE guid = '" + str(script_guid) + "'"
 
-        self._logger.info("SQLiteManager - Getting Script Of Guid: " + str(script_guid))
+        self._logger.debug("SQLiteManager - Getting Script Of Guid: " + str(script_guid))
         self._cursor.execute(query)
         script = self._cursor.fetchone()
 
@@ -348,14 +348,14 @@ class SQLiteManager:
 
         query = "SELECT id, guid, file_name, script_engine, file_path FROM scripts WHERE id = " + str(script_id) + ""
 
-        self._logger.info("SQLiteManager - Getting Script Of ID: " + str(script_id))
+        self._logger.debug("SQLiteManager - Getting Script Of ID: " + str(script_id))
         self._cursor.execute(query)
         script = self._cursor.fetchone()
 
         if script is None:
             return None
 
-        self._logger.info(script)
+        self._logger.debug(script)
 
         script_model = Script()
         script_model.id = script[0]
@@ -370,7 +370,7 @@ class SQLiteManager:
 
         query = "DELETE FROM scripts"
 
-        self._logger.info("SQLiteManager - Deleting All Script Entries")
+        self._logger.debug("SQLiteManager - Deleting All Script Entries")
         self._cursor.execute(query)
         self._conn.commit()
 
@@ -423,7 +423,7 @@ class SQLiteManager:
         query = "INSERT INTO scripts (guid, file_name, script_engine, file_path) VALUES ('{guid}', '{file_name}', '{script_engine}', '{file_path}')"
         query = query.format(guid=str(guid), file_name=file_name, script_engine=script_engine, file_path=file_path)
 
-        self._logger.info("SQLiteManager - Inserting Script")
+        self._logger.debug("SQLiteManager - Inserting Script")
         self._cursor.execute(query)
 
         script_id = self._cursor.lastrowid
@@ -434,7 +434,7 @@ class SQLiteManager:
     def getDeploymentOfId(self, deployment_id):
         query = "SELECT id, guid, name, description FROM deployments WHERE id = " + str(deployment_id) + ""
 
-        self._logger.info("SQLiteManager - Getting Deployment Of ID: " + str(deployment_id))
+        self._logger.debug("SQLiteManager - Getting Deployment Of ID: " + str(deployment_id))
         self._cursor.execute(query)
         deployment = self._cursor.fetchone()
 
@@ -453,7 +453,7 @@ class SQLiteManager:
         query = "SELECT id, guid, name, description FROM deployments WHERE guid = '{deployment_guid}'"
         query = query.format(deployment_guid=deployment_guid)
 
-        self._logger.info("SQLiteManager - Getting Deployment Of Guid: " + str(deployment_guid))
+        self._logger.debug("SQLiteManager - Getting Deployment Of Guid: " + str(deployment_guid))
         self._cursor.execute(query)
         deployment = self._cursor.fetchone()
 
@@ -471,7 +471,7 @@ class SQLiteManager:
     def getAllDeployments(self):
         query = "SELECT id, guid, name, description FROM deployments"
 
-        self._logger.info("SQLiteManager - Getting All Deployments")
+        self._logger.debug("SQLiteManager - Getting All Deployments")
         self._cursor.execute(query)
         deployments = self._cursor.fetchall()
 
@@ -499,7 +499,7 @@ class SQLiteManager:
         query = "INSERT INTO deployments(guid, name, description VALUES('{guid}', '{name}', '{description}')"
         query = query.format(guid=str(guid), name=name, description=description)
 
-        self._logger.info("SQLiteManager - Inserting Deployment")
+        self._logger.debug("SQLiteManager - Inserting Deployment")
         self._cursor.execute(query)
         deployment_id = self._cursor.lastrowid
         self._conn.commit()
@@ -509,7 +509,7 @@ class SQLiteManager:
     def getDeploymentScriptOfId(self, deployment_script_id):
         query = "SELECT id, guid, deployment, script FROM deployment_scripts WHERE id = " + str(deployment_script_id) + ""
 
-        self._logger.info("SQLiteManager - Getting Deployment Script Of ID: " + str(deployment_script_id))
+        self._logger.debug("SQLiteManager - Getting Deployment Script Of ID: " + str(deployment_script_id))
         self._cursor.execute(query)
         deployment_script = self._cursor.fetchone()
 
@@ -537,7 +537,7 @@ class SQLiteManager:
         query = "INSERT INTO deployment_scripts(guid, deploymnet, script, priority) VALUES({guid}, {deployment}, {script}, {priority})"
         query = query.format(guid=str(guid), deployment=deployment, script=script, priority=priority)
 
-        self._logger.info("SQLiteManager - Inserting Deployment Script")
+        self._logger.debug("SQLiteManager - Inserting Deployment Script")
         self._cursor.execute(query)
         deployment_script_id = self._cursor.lastrowid
         self._conn.commit()
@@ -552,7 +552,7 @@ class SQLiteManager:
                 "WHERE d.guid = {deployment_guid}"
 
         query = query.format(deployment_guid=str(deployment_guid))
-        self._logger.info("Getting Scripts Of Deployment Guid: " + str(deployment_guid))
+        self._logger.debug("Getting Scripts Of Deployment Guid: " + str(deployment_guid))
         self._cursor.execute(query)
         scripts = self._cursor.fetchall()
 

@@ -128,6 +128,6 @@ def determine_engine_for_script(script_name):
     if engine is None:
         user_engine_names = [x.get("name", None) for x in enginemaps.user_engines if file_type in x.get("file_types", None)]
         if len(user_engine_names) > 0 and user_engine_names[0] is not None:
-            return user_engine_names[0]
+            engine = user_engine_names[0]
 
-    return None
+    return engine

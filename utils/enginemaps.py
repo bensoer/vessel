@@ -29,7 +29,6 @@ within this list
 '''
 default_catalogued_engines = ["exe", "batch"]
 
-
 '''
 user_engines are for 3rd party engines which have not had support added natively to Vessel. user_engines is for
 users to add additional engine and script support to Vessel ahead of Vessel's development. user_engines is a 
@@ -53,8 +52,8 @@ For the above perl example. Running the script helloworld.pl would be run like t
 ~$: C:\perl\perl.exe helloworld.pl
 Because the pre and post script parameter string arrays are empty, nothing is used
 
-NOTE: Adding multiple user_engines will have a small performance hit as Vessel only checks this array after
-failing to successfully use engines listed in supported_engines.
+NOTE: if a user engine has the same name as one listed in the supported_engines it will override the supported engine
+implementation. This allows for custom configurations of supported engines by users
 '''
 user_engines = []
 

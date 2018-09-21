@@ -12,6 +12,7 @@ try:
 except ImportError:  # pip<10
     from pip import get_installed_distributions
 import base64
+import utils.enginemaps as enginemaps
 
 # THIS IS THE APP WIDE GLOBAL
 vessel_version = "1.0.0"
@@ -57,7 +58,7 @@ def get_ping_info(request, config):
 
     return request
 
-# TODO: Add support for user_engines !!
+
 def _get_execute_params_for_engine(engine, script):
 
     absolute_file_path = script.file_path + os.sep + script.file_name
@@ -74,6 +75,19 @@ def _get_execute_params_for_engine(engine, script):
 
         'exe': [absolute_file_path]
     }
+
+    # configured like this allows for users to also override build in engines with their own
+    user_engines = [x for x in enginemaps.user_engines if x.name == engine.name]
+    if len(user_engines) > 0:
+        user_engine = user_engines[0]
+
+        params = list()
+        params.append(user_engine["engine_path"])
+        params.extend(user_engine["pre_script_parameters"])
+        params.append(absolute_file_path)
+        params.extend(user_engine["post_script_parameters"])
+
+        return params
 
     return script_engine_to_params.get(engine.name, [absolute_file_path])
 
