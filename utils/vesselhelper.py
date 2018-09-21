@@ -50,6 +50,8 @@ def encrypt_string_with_aes_key_to_base64_bytes(message:str, aes_key:bytes)->byt
 def decrypt_base64_bytes_with_aes_key_to_string(encrypted_base64_bytes:bytes, aes_key:bytes)->str:
 
     encrypted_message_with_iv = base64.b64decode(encrypted_base64_bytes)
+    # bug in decoder doesn't handle not enough '=' eventhough they don't matter
+
     iv = encrypted_message_with_iv[:AES.block_size]
     encrypted_message = encrypted_message_with_iv[AES.block_size:]
 

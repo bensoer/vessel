@@ -7,7 +7,7 @@ itsdangerous==0.24
 Jinja2==2.10
 MarkupSafe==1.0
 Naked==0.1.31
-pycryptodome==3.5.1
+pycryptodome==3.6.6
 pyOpenSSL==17.5.0
 PyYAML==3.12
 requests==2.18.4

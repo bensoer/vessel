@@ -25,24 +25,22 @@ class TerminalListenerProcess:
     __connections = dict()
 
     def __init__(self, initialization_tuple):
-        child_pipe, config = initialization_tuple
+        child_pipe, config, logging_queue = initialization_tuple
 
         self.child_pipe = child_pipe
 
         self._port = config["TERMINALLISTENER"]["port"]
         self._bind_ip = config["TERMINALLISTENER"]["bind_ip"]
-        self._log_dir = config["TERMINALLISTENER"]["log_dir"]
+        self._log_dir = config["LOGGING"]["log_dir"]
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/master-terminal.log"
 
-        self.logger = logging.getLogger("TerminalListenerProcess")
+        qh = logging.handlers.QueueHandler(logging_queue)
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        root.addHandler(qh)
+
+        self.logger = logging.getLogger("TerminalListenerProcessLogger")
         self.logger.setLevel(logging.DEBUG)
-        max_file_size = config["LOGGING"]["max_file_size"]
-        max_file_count = config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
         self.logger.info("TerminalListenerProcess Inialized. Creating Connection To SQL DB")
 

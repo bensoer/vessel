@@ -7,8 +7,12 @@ from db.models.Deployment import Deployment
 from db.models.DeploymentScript import DeploymentScript
 import os
 import platform
-import pip
+try:
+    from pip._internal.utils.misc import get_installed_distributions
+except ImportError:  # pip<10
+    from pip import get_installed_distributions
 import base64
+import utils.enginemaps as enginemaps
 
 # THIS IS THE APP WIDE GLOBAL
 vessel_version = "1.0.0"
@@ -48,31 +52,49 @@ def get_ping_info(request, config):
     ping_info["python-version"] = platform.python_version()
     ping_info["python-compiler"] = platform.python_compiler()
     ping_info["operating-system"] = platform.platform()
-    ping_info["packages"] = sorted(["%s==%s" % (i.key, i.version) for i in pip.get_installed_distributions()])
+    ping_info["packages"] = sorted(["%s==%s" % (i.key, i.version) for i in get_installed_distributions()])
 
     request["rawdata"] = ping_info
 
     return request
 
 
-def _get_execute_params_for_engine(script_engine, file_path, file_name):
+def _get_execute_params_for_engine(engine, script):
 
-    absolute_file_path = file_path + os.sep + file_name
+    absolute_file_path = script.file_path + os.sep + script.file_name
 
     script_engine_to_params = {
-        'python': ['python', absolute_file_path],
-        'powershell': ['powershell.exe', '-ExecutionPolicy', 'RemoteSigned', '-F', absolute_file_path],
+        'python': [engine.path, absolute_file_path],
+
+        'powershell': [engine.path, '-ExecutionPolicy', 'RemoteSigned',
+                        '-F', absolute_file_path],
+
         'batch': [absolute_file_path],
-        'node': ['node', absolute_file_path],
+
+        'node': [engine.path, absolute_file_path],
+
         'exe': [absolute_file_path]
     }
 
-    return script_engine_to_params.get(script_engine, [absolute_file_path])
+    # configured like this allows for users to also override build in engines with their own
+    user_engines = [x for x in enginemaps.user_engines if x.name == engine.name]
+    if len(user_engines) > 0:
+        user_engine = user_engines[0]
 
-def execute_script(script, logger):
+        params = list()
+        params.append(user_engine["engine_path"])
+        params.extend(user_engine["pre_script_parameters"])
+        params.append(absolute_file_path)
+        params.extend(user_engine["post_script_parameters"])
+
+        return params
+
+    return script_engine_to_params.get(engine.name, [absolute_file_path])
+
+
+def execute_script(script_execute_list, logger):
 
     try:
-        script_execute_list = _get_execute_params_for_engine(script.script_engine, script.file_path, script.file_name)
         # execute the script
         process = subprocess.run(script_execute_list, shell=True,
                                  check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -90,7 +112,6 @@ def execute_script(script, logger):
                     parsed_output[key] = value
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = parsed_output
         rawdata["data"] = (process.stdout, process.stderr, process.returncode)
 
@@ -100,7 +121,6 @@ def execute_script(script, logger):
         logger.exception("A CalledProcessError Occurred")
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = dict()
         rawdata["data"] = (cpe.stdout, cpe.stderr, cpe.returncode)
 
@@ -111,7 +131,6 @@ def execute_script(script, logger):
         logger.error("An OS Error Occurred")
 
         rawdata = dict()
-        rawdata["script_guid"] = str(script.guid)
         rawdata["parsed_output"] = dict()
         rawdata["data"] = (ose.strerror, ose.strerror, ose.errno)
 
@@ -126,7 +145,11 @@ def execute_script_on_node(sql_manager, request, logger):
     for script in all_scripts:
         if script.guid == uuid.UUID(script_guid):
 
-            succesful, results_data = execute_script(script, logger)
+            # figure out execution parameters here
+            engine = sql_manager.getEngineOfName(script.script_engine)
+            execution_params = _get_execute_params_for_engine(engine, script)
+
+            succesful, results_data = execute_script(execution_params, logger)
 
             if succesful:
                 old_from = request['from']

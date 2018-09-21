@@ -1,20 +1,15 @@
 from socket import *
-import select
 import errno
-from db.models.Node import Node
 import logging
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-import threading
 import utils.vesselhelper as vh
 import utils.script_manager as sm
 from db.models.Key import Key
 import json
-from db.models.Script import Script
-import uuid
-import subprocess
-from subprocess import CalledProcessError
 import utils.taskrunner as taskrunner
+import time
+
 
 class NodeClientProcess:
 
@@ -32,7 +27,7 @@ class NodeClientProcess:
     failed_initializing = False
 
     def __init__(self, initialization_tuple):
-        child_pipe, config = initialization_tuple
+        child_pipe, config, logging_queue = initialization_tuple
 
         self.child_pipe = child_pipe
         self._config = config
@@ -46,16 +41,15 @@ class NodeClientProcess:
         self._script_dir = config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
         self._private_key_password = config["DEFAULT"]["private_key_password"]
-        log_path = self._log_dir + "/node-client.log"
 
-        self.logger = logging.getLogger("NodeClientProcess")
+        # setup logging
+        qh = logging.handlers.QueueHandler(logging_queue)
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        root.addHandler(qh)
+
+        self.logger = logging.getLogger("NodeClientProcessLogger")
         self.logger.setLevel(logging.DEBUG)
-        max_file_size = config["LOGGING"]["max_file_size"]
-        max_file_count = config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
         self.logger.info("NodeListenerProcess Inialized. Creating Connection To SQL DB")
 
@@ -63,7 +57,7 @@ class NodeClientProcess:
 
         self.logger.info("Connection Complete")
 
-    def _send_message(self, message:str, encrypt_with_key=None):
+    def _send_message(self, message:str, encrypt_with_key=None)->int:
         try:
             if encrypt_with_key is not None:
 
@@ -77,10 +71,10 @@ class NodeClientProcess:
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
                 return self._client_socket.send(message.encode())
-        except error as se:
+        except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
-                    "Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
+                    "Connection Reset Detected While Trying To Send Message. Attempting Connection Reestablishment")
 
                 # close socket
                 try:
@@ -92,33 +86,27 @@ class NodeClientProcess:
                 except:
                     pass
 
-            # connect again to master
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((self._master_host, int(self._master_port)))
+                reconnect_succeeded = self.execute_connect_to_host_procedure()
+                if not reconnect_succeeded:
+                    self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
 
-            try:
+                    action = dict()
+                    action['command'] = "SYS"
+                    action['from'] = "CLIENT"
+                    action['to'] = "NODE"
+                    action['params'] = "SHUTDOWN"
+                    self.child_pipe.send(action)
 
-                # exchange keys
-                self._master_public_key = self._recv_message(2048)
+                    exit()
+                    return 0
+                else:
+                    return self._send_message(message, encrypt_with_key=encrypt_with_key)
+            else:
+                self.logger.info("An OSError Was Thrown While Trying To Send Message")
+                self.logger.info(se)
+                return 0
 
-                node_private_key, node_private_key_password, node_aes_key = encrypt_with_key
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-
-                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                      self._master_public_key)
-                self._client_socket.send(encrypted_aes_key)
-
-                # return _recv_message again
-                return self._send_message(message, encrypt_with_key=encrypt_with_key)
-            except:
-                # if connection fails here - then host prob is down. so stop trying
-                self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
-                exit(1)
-                return None
-
-    def _recv_message(self, buffer_size, decrypt_with_key_pass=None)->str:
+    def _recv_message(self, buffer_size, decrypt_with_key_pass=None):
         try:
 
             raw_message: bytes = b''
@@ -144,7 +132,7 @@ class NodeClientProcess:
             else:
                 return self._client_socket.recv(buffer_size).decode('utf8')
 
-        except error as se:
+        except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info("Connection Reset Detected While Trying To Receive Message. Attempting Connection Reestablishment")
 
@@ -158,31 +146,65 @@ class NodeClientProcess:
                 except:
                     pass
 
-            # connect again to master
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((self._master_host, int(self._master_port)))
-
-            try:
-
-                # exchange keys
-                self._master_public_key = self._recv_message(2048)
-
-                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-
-                encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                      self._master_public_key)
-                self._client_socket.send(encrypted_aes_key)
-
-                # return _recv_message again
-                return self._recv_message(buffer_size, decrypt_with_key_pass=decrypt_with_key_pass)
-            except:
-                # if connection fails here - then host prob is down. so stop trying
-                self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
-                exit(1)
+                reconnect_succeeded = self.execute_connect_to_host_procedure()
+                if not reconnect_succeeded:
+                    self.logger.fatal("Connection Reestablishment Failed. Not Bothering Again. Terminating Process")
+                    return None
+            else:
+                self.logger.info("An OSError Was Thrown While Trying To Receive Message")
+                self.logger.info(se)
                 return None
+
+    def execute_connect_to_host_procedure(self)->bool:
+        try:
+            address_results = getaddrinfo(self._master_host, int(self._master_port))
+            master_ip = address_results[0][4][0]
+
+            self._client_socket = socket(AF_INET, SOCK_STREAM)
+            self._client_socket.connect((master_ip, int(self._master_port)))
+        except:
+            self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
+            self.failed_initializing = True
+            return False
+
+        try:
+
+            self.logger.info("Connection Established With Master. Securing Connection With Keys")
+
+            self._master_public_key = self._recv_message(2048)
+            if self._master_public_key is None:
+                self.logger.fatal("Failed To Receive Master Node Public Key. Terminating")
+                # TODO: Pass Message to node process to shut service down
+
+                action = dict()
+                action['command'] = "SYS"
+                action['from'] = "CLIENT"
+                action['to'] = "NODE"
+                action['params'] = "SHUTDOWN"
+                self.child_pipe.send(action)
+
+                exit()
+
+            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
+                                                                        self._node_private_key,
+                                                                        self._private_key_password)
+
+            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                 self._master_public_key)
+
+            self._send_message(encrypted_aes_key.decode('utf-8'))
+
+            self.logger.info("Key Received From Master")
+            self.logger.info(self._master_public_key)
+
+            self.logger.info("Connection Secured")
+
+        except:
+            self.logger.exception("Connection With Master Node Failed. Aborting Processing")
+            self.failed_initializing = True
+            return False
+
+        return True
 
     def start(self):
         command_dict = None
@@ -227,35 +249,7 @@ class NodeClientProcess:
             self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
 
-            try:
-                address_results = getaddrinfo(self._master_host, int(self._master_port))
-                self._master_host = address_results[0][4][0]
-
-                self._client_socket = socket(AF_INET, SOCK_STREAM)
-                self._client_socket.connect((self._master_host, int(self._master_port)))
-            except:
-                self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
-                self.failed_initializing = True
-                return
-
-            self.logger.info("Connection Established With Master. Securing Connection With Keys")
-
-            self._master_public_key = self._recv_message(2048)
-
-            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
-                                                               self._node_private_key,
-                                                               self._private_key_password)
-
-            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                 self._master_public_key)
-
-            self._send_message(encrypted_aes_key.decode('utf-8'))
-
-
-            self.logger.info("Key Received From Master")
-            self.logger.info(self._master_public_key)
-
-            self.logger.info("Connection Secured")
+            self.execute_connect_to_host_procedure()
 
             while True:
 
@@ -263,13 +257,23 @@ class NodeClientProcess:
                 command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key,
                                                                           self._private_key_password,
                                                                           self._node_aes_key))
-                self.logger.info("COMMAND RECEIVED")
-                self.logger.info(command)
+
+                if command is None:
+                    self.logger.error("Failed To Receive Command. Disconnection From Master Likely Occurred. Can't "
+                                      "Process Command")
+
+                    action = dict()
+                    action['command'] = "SYS"
+                    action['from'] = "CLIENT"
+                    action['to'] = "NODE"
+                    action['params'] = "SHUTDOWN"
+                    self.child_pipe.send(action)
+
+                    exit()
 
                 command_dict = json.loads(command)
-
-                self.logger.info("COMMAND RECEIVED 2")
-                self.logger.info(command_dict)
+                self.logger.info("COMMAND RECEIVED")
+                self.logger.info(command)
 
                 try:
 
@@ -368,6 +372,46 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "SYS" and command_dict["params"] == "RESTART":
+                        self.logger.info("Master Node Restart Request Received. Disconnecting and Starting "
+                                         "Reconnect Loop")
+
+                        # send back a clean exit
+                        response = dict()
+                        response["to"] = "MASTER"
+                        response["from"] = command_dict["to"]
+                        response["command"] = "SYS"
+                        response["param"] = "CONN.CLOSE"
+                        response["rawdata"] = command_dict["rawdata"]
+
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
+                        # disconnect from master. Sleep for 2 minutes, then start reconnecting
+                        try:
+                            self._client_socket.shutdown(socket.SHUT_RDWR)
+                        except:
+                            pass
+                        try:
+                            self._client_socket.close()
+                        except:
+                            pass
+
+                        self.logger.info("Diconnect From Master Node Complete. Sleeping For 2 Minutes")
+                        time.sleep(120)
+
+                        self.logger.info("Sleep Period Completed. Starting Reconnection")
+                        attempt_count = 0
+                        while not self.execute_connect_to_host_procedure():
+                            attempt_count += 1
+                            self.logger.info("Reconnection Failed. Sleeping For 30 Seconds and Trying Again " +
+                                             "(Attempts: " + str(attempt_count) + ")")
+                            time.sleep(30)
+                        self.logger.info("Reconnection Successful. SYS.RESTART Complete")
+
                     else:
                         self.logger.info("Received Command Has Not Been Configured A Handling. Cannot Process Command")
 
@@ -377,7 +421,8 @@ class NodeClientProcess:
                         error_response['to'] = command_dict['from']
                         error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
                                                   " To: " + command_dict['to']
-                        error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
+                        error_response['rawdata'] = ("Received Command Has No Mapping On This Node. Cannot Process Command",
+                                                     command_dict)
 
                         serialized_data = json.dumps(error_response)
                         self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,

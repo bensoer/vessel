@@ -6,7 +6,7 @@ import configparser
 import os
 import inspect
 import logging
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Queue
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 from proc.node_listener_process import NodeListenerProcess
@@ -15,12 +15,15 @@ from proc.http_listener_process import HttpListenerProcess
 import threading
 import utils.taskrunner as taskrunner
 import utils.script_manager as sm
+import time
+import utils.logging as logutils
 
 
 def bootstrapper(wrapper_object, initialization_tuple):
     instance = wrapper_object(initialization_tuple)
     instance.start()
     exit(0)
+
 
 def pipe_recv_handler(master_process, parent_pipe):
     master_process._logger.info("Pipe Recv Handler Spawned. Listening For Messages")
@@ -39,7 +42,9 @@ def pipe_recv_handler(master_process, parent_pipe):
         elif message_for == "MASTER":
             answer = master_process.handle_master_requests(command)
             # send the answer back wherever it came (most likely the http)
-            parent_pipe.send(answer)
+            # send answer if it is not None
+            if answer is not None:
+                parent_pipe.send(answer)
         else:
             master_process._logger.warning("Could Not Determine What Message Is For. Can't Forward Appropriatly")
 
@@ -64,7 +69,10 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
     node_parent_pipe = None
     http_parent_pipe = None
 
-    def __init__(self,args):
+    shutdown_occurring = False
+    shutdown_processing_complete = False
+
+    def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self,args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
 
@@ -75,22 +83,49 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self._root_dir = self._config["DEFAULT"]["root_dir"]
         self._script_dir = self._config["DEFAULT"].get("scripts_dir", self._root_dir + "/scripts")
 
-
-        log_path = self._log_dir + "/master-service.log"
-
-        self._logger = logging.getLogger(self._svc_name_)
-        self._logger.setLevel(logging.DEBUG)
-        handler = RotatingFileHandler(log_path, maxBytes=4096, backupCount=10)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self._logger.addHandler(handler)
+        logutils.initialize_all_logging_configuration(self._log_dir)
+        self._logger = logutils.master_logger
 
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+        self.shutdown_occurring = True
 
-        # TODO: Tell All Child Nodes To Disconnect, Sleep, then Start An Infinite Reconnect Attempt Cycle
+        self._logger.info("Service Is Stopping")
+
+        self._logger.info("Fetching All Nodes To Send Restart Requests")
+        # get list of all the nodes
+        sql_manager = SQLiteManager(self._config, self._logger)
+        all_nodes = sql_manager.getAllNodes()
+        self._logger.info("Nodes Fetched. Parsing")
+
+        self._logger.info("Parsing Complete")
+
+        self._logger.info("Nodes Fetched. Now Sending")
+        # send message to each node to disconnect, sleep and then start infinite reconnect attempts
+        for node in all_nodes:
+            action = dict()
+            action['command'] = "SYS"
+            action['from'] = "MASTER"
+            action['to'] = "NODE"
+            action['params'] = "RESTART"
+            action['rawdata'] = (str(node.guid),)
+
+            self.sendMessageToNodeProcess(action)
+
+        self._logger.info("Now Waiting For Nodes To Disconnect")
+        # wait for all the nodes to disconnect via checking the db
+        while len(sql_manager.getAllNodes()) > 0:
+            time.sleep(2)
+            pass
+
+        self._logger.info("Parse Complete. Closing Connection")
+        sql_manager.closeEverything()
+
+        # now it is safe to terminate
+        self.shutdown_processing_complete = True
+        self._logger.info("Shutdown Processing Completed")
 
     def SvcDoRun(self):
         self.ReportServiceStatus(win32service.SERVICE_RUNNING)
@@ -102,6 +137,14 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self.main()
 
     def handle_master_requests(self, command):
+
+        # TODO: This is called if there is an error made by a request sent by master process. If master process
+        # TODO: makes calls using the pipes, it would be able to wait at the calling code point for the response
+        # TODO: this may be more ideal ??
+        if command['command'] == "ERROR":
+            self._logger.error("Error Command Received")
+            self._logger.error(command)
+            return None
 
         if command['command'] == "EXEC" and command['params'] == "SCAN.SCRIPTS":
             sqlite_manager = SQLiteManager(self._config, self._logger)
@@ -119,7 +162,7 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         if command['command'] == "EXEC" and command['params'] == "SCRIPTS.EXECUTE":
 
             sqlite_manager = SQLiteManager(self._config, self._logger)
-            response = taskrunner.execute_script_on_node(sqlite_manager, command, self.logger)
+            response = taskrunner.execute_script_on_node(sqlite_manager, command, self._logger)
             sqlite_manager.closeEverything()
 
             return response
@@ -138,6 +181,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         self._logger.info("Master Role Detected. Setting Up Service For Master Role")
 
         # catalogue all the scripts in the system
+        self._logger.info("Catalogueing Engines On The System")
+        sm.catalogue_local_engines(sqlite_manager, self._logger)
         self._logger.info("Catalogueing Scripts On The System")
         sm.catalogue_local_scripts(sqlite_manager, self._script_dir, self._logger)
 
@@ -148,7 +193,9 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self.terminal_parent_pipe = terminal_parent_pipe
             self._logger.info("Now Creating TerminalListenerProcess Class")
             self._logger.info("Now Creating Process With Boostrapper")
-            self._terminal_process = Process(target=bootstrapper, args=(TerminalListenerProcess, (terminal_child_pipe, self._config)))
+            self._terminal_process = Process(target=bootstrapper, args=(TerminalListenerProcess, (terminal_child_pipe,
+                                                                                                  self._config,
+                                                                                                  logutils.logging_queue)))
             self._logger.info("Now Starting Process")
             self._terminal_process.start()
             self._logger.info("Termina Process Has Started Running")
@@ -167,7 +214,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self._logger.info("Now Creating NodeListenerProcess Class")
             #node_listener = NodeListenerProcess(to_parent_pipe, to_child_pipe, self._config)
             self._logger.info("Now Creating Process With BootStrapper")
-            self._node_process = Process(target=bootstrapper, args=(NodeListenerProcess,(node_child_pipe, self._config)))
+            self._node_process = Process(target=bootstrapper, args=(NodeListenerProcess,(node_child_pipe, self._config,
+                                                                                         logutils.logging_queue)))
             self._logger.info("Now Starting Process")
             self._node_process.start()
             self._logger.info("Http Process Has Started Running")
@@ -184,7 +232,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             self.http_parent_pipe = http_parent_pipe
             self._logger.info("Now Creating HttpListenerProcess Class")
             self._logger.info("Now Creating Process With Bootstrapper")
-            self._http_process = Process(target=bootstrapper, args=(HttpListenerProcess, (http_child_pipe, self._config)))
+            self._http_process = Process(target=bootstrapper, args=(HttpListenerProcess, (http_child_pipe, self._config,
+                                                                                          logutils.logging_queue)))
             self._logger.info("Now Starting Http Process")
             self._http_process.start()
             self._logger.info("Http Process Has Started Running")
@@ -214,6 +263,8 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
         h_thread.daemon = True
         h_thread.start()
 
+        # spawn logging thread
+        l_thread = logutils.start_logging_thread()
 
         rc = None
         while rc != win32event.WAIT_OBJECT_0:
@@ -223,9 +274,19 @@ class AppServerSvc (win32serviceutil.ServiceFramework):
             # hang for 1 minute or until service is stopped - whichever comes first
             rc = win32event.WaitForSingleObject(self.hWaitStop, (1 * 60 * 1000))
 
+        self._logger.info("Service Shutdown Detected In Main Loop. Waiting For Shutdown Process To Complete")
+        # don't terminate processes until all of the shutdown procedure has completed
+        while not self.shutdown_processing_complete:
+            # loop until its done
+            pass
+
+        self._logger.info("Shutdown Process Completed. Terminating Other Processes")
+        # now temrinate processes
         self._node_process.terminate()
         self._terminal_process.terminate()
         self._http_process.terminate()
+
+        self._logger.info("Main Loop Termination Completed. Terminating")
 
 
     def sendMessageToNodeProcess(self, message):
