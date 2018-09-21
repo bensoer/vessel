@@ -24,6 +24,7 @@ def bootstrapper(wrapper_object, initialization_tuple):
     instance.start()
     exit(0)
 
+
 def pipe_recv_handler(master_process, parent_pipe):
     master_process._logger.info("Pipe Recv Handler Spawned. Listening For Messages")
     while True:

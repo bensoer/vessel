@@ -5,13 +5,12 @@ import servicemanager
 import configparser
 import os
 import inspect
-import logging
 from multiprocessing import Process, Pipe
-from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
 from proc.node_client_process import NodeClientProcess
 import utils.script_manager as sm
 import utils.logging as logutils
+
 
 def pipe_recv_handler(node_process, parent_pipe):
     node_process._logger.info("Node Pipe Recv Handler Spawned. Listening For Messages")
@@ -35,6 +34,7 @@ def bootstrapper(wrapper_object, initialization_tuple):
     instance = wrapper_object(initialization_tuple)
     instance.start()
     exit(0)
+
 
 class AppServerSvc(win32serviceutil.ServiceFramework):
     _svc_name_ = "VesselNode"
@@ -62,9 +62,11 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         logutils.initialize_all_logging_configuration(self._log_dir)
         self._logger = logutils.node_logger
 
+
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+
 
     def SvcDoRun(self):
         self.ReportServiceStatus(win32service.SERVICE_RUNNING)

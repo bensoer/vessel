@@ -151,7 +151,6 @@ class NodeListenerProcess:
     child_pipe = None
     _port = None
     logger = None
-    #logging_queue = Queue(2048)
 
     master_private_key = None
     master_public_key = None
