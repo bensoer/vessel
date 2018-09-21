@@ -8,22 +8,13 @@ from db.sqlitemanager import SQLiteManager
 import threading
 import utils.vesselhelper as vh
 import json
-from queue import Queue
 
-
-'''def logging_handler(node_listener_process, logging_queue):
-    while True:
-        queue_item = logging_queue.get(block=True)
-        node_listener_process.logger.info(queue_item)
-'''
 
 def pipe_recv_handler(node_listener_process, logger, child_pipe):
     logger.info("Pipe Recv Handler Spawned. Listening For Messages")
     while True:
-        logger.info("CHECKING")
         command = child_pipe.recv()
-        logger.info("GOT SOMETHING")
-        logger.info("Received Command: " + str(command))
+        logger.debug("Received Command: " + str(command))
 
         send_success = False
         if command['command'] == 'GET':
@@ -41,6 +32,19 @@ def pipe_recv_handler(node_listener_process, logger, child_pipe):
         elif command['command'] == 'SYS':
             node_guid = command['rawdata'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
+        else:
+            error_response = dict()
+            error_response['command'] = 'ERROR'
+            error_response['from'] = 'pipe_recv_handler'
+            error_response['to'] = command['from']
+            # (command, command_from, command_to, send_success)
+            error_response['params'] = (command['command'], command['from'], command['to'], send_success)
+            error_response['rawdata'] = "A Handler For The Command: " + command["command"] + \
+                                        " Does Not Exist. Could Not Process"
+
+            logger.warn("Could Not Determine Handler For Received Command. Can't Process")
+            logger.warn(str(error_response))
+            child_pipe.send(error_response)
 
         # if the send fails or not of the IFs meet - then return an error back so the client can be informed
         if not send_success:
@@ -50,7 +54,12 @@ def pipe_recv_handler(node_listener_process, logger, child_pipe):
             error_response['to'] = command['from']
             # (command, command_from, command_to, send_success)
             error_response['params'] = (command['command'], command['from'], command['to'], send_success)
-            error_response['rawdata'] = "Send Of Message To Node Failed OR IF Condition To Parse node_guid failed"
+            error_response['rawdata'] = "Send Of Message To Node Failed"
+
+            logger.warn(
+                "Failed To Forward Command To Appropriate Node. Sending Error Response Back To Caller With Details")
+            logger.warn(str(error_response))
+
             child_pipe.send(error_response)
 
 
@@ -135,6 +144,7 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
         finally:
             sql_manager.closeEverything()
 
+
 class NodeListenerProcess:
 
     _sql_manager = None
@@ -166,7 +176,6 @@ class NodeListenerProcess:
         self._bind_ip = config["NODELISTENER"]["bind_ip"]
         self._log_dir = config["LOGGING"]["log_dir"]
         self.private_key_password = config["DEFAULT"]["private_key_password"]
-        #log_path = self._log_dir + "/master-node.log"
 
         qh = logging.handlers.QueueHandler(logging_queue)
         root = logging.getLogger()
@@ -176,19 +185,8 @@ class NodeListenerProcess:
         self.logger = logging.getLogger("NodeListenerProcessLogger")
         self.logger.setLevel(logging.DEBUG)
 
-        '''
-        max_file_size = self._config["LOGGING"]["max_file_size"]
-        max_file_count = self._config["LOGGING"]["max_file_count"]
-        handler = RotatingFileHandler(log_path, maxBytes=int(max_file_size), backupCount=int(max_file_count))
-        formatter = logging.Formatter('%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        '''
-
         self.logger.info("NodeListenerProcess Inialized. Creating Connection To SQL DB")
-
         self._sql_manager = SQLiteManager(config, self.logger)
-
         self.logger.info("Connection Complete")
 
     def forwardCommandToAppropriateNode(self, command, node_guid: str)->bool:
@@ -282,13 +280,6 @@ class NodeListenerProcess:
             else:
                 self.master_private_key = private_key.key
                 self.master_public_key = public_key.key
-
-            self.logger.info("Setting Up Queue For MultiThread Handling Of Logging")
-
-            #self.logger.info("Launching Logging Queue Thread")
-            #l = threading.Thread(target=logging_handler, args=(self, self.logger))
-            #l.daemon = True
-            #l.start()
 
             self.logger.info("Launching Pipe Listening Thread")
             t = threading.Thread(target=pipe_recv_handler, args=(self, self.logger, self.child_pipe))

@@ -3,7 +3,6 @@ import errno
 import logging
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-import threading
 import utils.vesselhelper as vh
 import utils.script_manager as sm
 from db.models.Key import Key
@@ -373,7 +372,7 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
-                    elif command_dict["command"] == "EXEC" and command_dict["params"] == "SYS.RESTART":
+                    elif command_dict["command"] == "SYS" and command_dict["params"] == "RESTART":
                         self.logger.info("Master Node Restart Request Received. Disconnecting and Starting "
                                          "Reconnect Loop")
 
@@ -422,7 +421,8 @@ class NodeClientProcess:
                         error_response['to'] = command_dict['from']
                         error_response['params'] = "Command: " + command_dict['command'] + " From: " + command_dict['from'] + \
                                                   " To: " + command_dict['to']
-                        error_response['rawdata'] = "Received Command Has No Mapping On This Node. Cannot Process Command"
+                        error_response['rawdata'] = ("Received Command Has No Mapping On This Node. Cannot Process Command",
+                                                     command_dict)
 
                         serialized_data = json.dumps(error_response)
                         self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
