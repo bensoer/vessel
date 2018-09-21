@@ -49,7 +49,7 @@ class NodeClientProcess:
         root.setLevel(logging.DEBUG)
         root.addHandler(qh)
 
-        self.logger = logging.getLogger("NodeListenerProcessLogger")
+        self.logger = logging.getLogger("NodeClientProcessLogger")
         self.logger.setLevel(logging.DEBUG)
 
         self.logger.info("NodeListenerProcess Inialized. Creating Connection To SQL DB")

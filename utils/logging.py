@@ -6,6 +6,7 @@ import threading
 master_logger = None
 node_logger = None
 node_listener_process_logger = None
+node_client_process_logger = None
 http_listener_process_logger = None
 terminal_listener_process_logger = None
 
@@ -27,12 +28,14 @@ def initialize_all_logging_configuration(log_dir):
     global http_listener_process_logger
     global terminal_listener_process_logger
     global node_logger
+    global node_client_process_logger
 
     node_logpath = log_dir + "/node-service.log"
     master_logpath = log_dir + "/master-service.log"
     node_listener_process_logpath = log_dir + "/node-listener-process.log"
     http_listener_process_logpath = log_dir + "/http-listener-process.log"
     terminal_listener_process_logpath = log_dir + "/terminal-listener-process.log"
+    node_client_process_logpath = log_dir + "/node-client-process.log"
 
     node_logger = logging.getLogger("NodeProcessLogger")
     node_logger.setLevel(logging.DEBUG)
@@ -58,6 +61,15 @@ def initialize_all_logging_configuration(log_dir):
         '%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s')
     node_listener_process_handler.setFormatter(node_listener_process_format)
     node_listener_process_logger.addHandler(node_listener_process_handler)
+
+    node_client_process_logger = logging.getLogger("NodeClientProcessLogger")
+    node_client_process_logger.setLevel(logging.DEBUG)
+    node_client_process_handler = RotatingFileHandler(node_client_process_logpath, maxBytes=8192, backupCount=10)
+    node_client_process_format = logging.Formatter(
+        '%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s'
+    )
+    node_handler.setFormatter(node_client_process_format)
+    node_logger.addHandler(node_client_process_handler)
 
     http_listener_process_logger = logging.getLogger("HttpListenerProcessLogger")
     http_listener_process_logger.setLevel(logging.DEBUG)
