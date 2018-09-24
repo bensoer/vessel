@@ -6,8 +6,8 @@ import configparser
 import os
 import inspect
 from multiprocessing import Process, Pipe
-from db.sqlitemanager import SQLiteManager
-from proc.node_client_process import NodeClientProcess
+from db import SQLiteManager
+from proc import NodeClientProcess
 import utils.script_manager as sm
 import utils.logging as logutils
 

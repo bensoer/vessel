@@ -9,9 +9,9 @@ import logging
 from multiprocessing import Process, Pipe, Queue
 from logging.handlers import RotatingFileHandler
 from db.sqlitemanager import SQLiteManager
-from proc.node_listener_process import NodeListenerProcess
-from proc.terminal_listener_process import TerminalListenerProcess
-from proc.http_listener_process import HttpListenerProcess
+from proc import NodeListenerProcess
+from proc import TerminalListenerProcess
+from proc import HttpListenerProcess
 import threading
 import utils.taskrunner as taskrunner
 import utils.script_manager as sm

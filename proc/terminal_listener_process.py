@@ -1,12 +1,7 @@
 from socket import *
-import errno
-import select
-from db.models.Node import Node
-from db.models.Key import Key
 import logging
 from logging.handlers import RotatingFileHandler
-from db.sqlitemanager import SQLiteManager
-import threading
+from db import SQLiteManager
 import utils.vesselhelper as vh
 
 

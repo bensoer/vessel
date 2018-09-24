@@ -1,10 +1,10 @@
 from socket import *
 import errno
-from db.models.Node import Node
-from db.models.Key import Key
+from db.models import Node
+from db.models import Key
 import logging
 from logging.handlers import RotatingFileHandler
-from db.sqlitemanager import SQLiteManager
+from db import SQLiteManager
 import threading
 import utils.vesselhelper as vh
 import json

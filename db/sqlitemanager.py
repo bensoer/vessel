@@ -1,11 +1,11 @@
 import sqlite3
 import uuid
-from db.models.Key import Key
-from db.models.Script import Script
-from db.models.Node import Node
-from db.models.Deployment import Deployment
-from db.models.DeploymentScript import DeploymentScript
-from db.models.Engine import Engine
+from db.models import Key
+from db.models import Script
+from db.models import Node
+from db.models import Deployment
+from db.models import DeploymentScript
+from db.models import Engine
 
 class SQLiteManager:
 

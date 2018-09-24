@@ -2,10 +2,10 @@ from socket import *
 import errno
 import logging
 from logging.handlers import RotatingFileHandler
-from db.sqlitemanager import SQLiteManager
+from db import SQLiteManager
 import utils.vesselhelper as vh
 import utils.script_manager as sm
-from db.models.Key import Key
+from db.models import Key
 import json
 import utils.taskrunner as taskrunner
 import time

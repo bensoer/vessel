@@ -1,6 +1,6 @@
 import logging
 from logging.handlers import RotatingFileHandler
-from db.sqlitemanager import SQLiteManager
+from db import SQLiteManager
 from flask import Flask, jsonify, abort, request
 import uuid
 from multiprocessing import Lock
