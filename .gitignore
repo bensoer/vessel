@@ -55,5 +55,5 @@ service.ini
 *.log
 *.log.*
 __pycache__
-/scripts
+/vessel/scripts
 !/scripts/.gitkeep
