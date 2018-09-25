@@ -1,7 +1,7 @@
 from socket import *
 import errno
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import QueueHandler
 from db import SQLiteManager
 import utils.vesselhelper as vh
 import utils.script_manager as sm
@@ -10,6 +10,7 @@ import json
 import utils.taskrunner as taskrunner
 import time
 
+ssl = None
 
 class NodeClientProcess:
 
@@ -51,7 +52,7 @@ class NodeClientProcess:
         self.logger = logging.getLogger("NodeClientProcessLogger")
         self.logger.setLevel(logging.DEBUG)
 
-        self.logger.info("NodeListenerProcess Inialized. Creating Connection To SQL DB")
+        self.logger.info("NodeClientProcess Inialized. Creating Connection To SQL DB")
 
         self._sql_manager = SQLiteManager(config, self.logger)
 
@@ -156,16 +157,69 @@ class NodeClientProcess:
                 return None
 
     def execute_connect_to_host_procedure(self)->bool:
-        try:
-            address_results = getaddrinfo(self._master_host, int(self._master_port))
-            master_ip = address_results[0][4][0]
 
-            self._client_socket = socket(AF_INET, SOCK_STREAM)
-            self._client_socket.connect((master_ip, int(self._master_port)))
-        except:
-            self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
-            self.failed_initializing = True
-            return False
+        if self._config["SSL"]["enabled"] == 'True':
+            self.logger.info("SSL Sockets Enabled. Configuring SSL")
+
+            global ssl
+            if ssl is None:
+                try:
+                    import ssl
+                except ImportError:
+                    self.logger.exception("Failed to Import SSL Module!. Your system may be missing openssl or python" +
+                                          "version does not support it. Disable SSL or install SSL dependencies" +
+                                          "for python")
+                    return False
+
+            try:
+                address_results = getaddrinfo(self._master_host, int(self._master_port))
+                master_ip = address_results[0][4][0]
+
+                client_socket = socket(AF_INET, SOCK_STREAM)
+                client_socket.connect((master_ip, int(self._master_port)))
+
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ssl_context.load_verify_locations(self._config["SSL"]["master_cert"],
+                                                  self._config["SSL"]["master_key"])
+
+                ssl_client_socket = ssl_context.wrap_socket(client_socket, server_hostname=self._master_host)
+                self._client_socket = ssl_client_socket
+
+            except ssl.SSLEOFError:
+                self.logger.exception("SSLEOFError Occurred. Connection Was Terminated Abruptly. Can't Use " +
+                                      "Anything From Sockets")
+                return False
+            except ssl.CertificateError:
+                self.logger.exception("Certificate Error Occurred. Client Certificate Validation Failed. Not " +
+                                      "Accepting Connection. Note you MUST include the master certs " +
+                                      "(self-signed or not) in the configuration of each node for SSL to work " +
+                                      "correctly")
+                # python 3.7 has additional output that can be done here
+                return False
+            except ssl.SSLError:
+                self.logger.exception("Generic SSL Error Occurred. Aborting Connection Attempt")
+                return False
+            except (Exception, OSError) as e:
+                self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
+                self.failed_initializing = True
+                return False
+
+        else: # else this is not an SSL setup, so don't import anything and use our sockets as usual
+
+            try:
+                address_results = getaddrinfo(self._master_host, int(self._master_port))
+                master_ip = address_results[0][4][0]
+
+                client_socket = socket(AF_INET, SOCK_STREAM)
+                client_socket.connect((master_ip, int(self._master_port)))
+
+                self._client_socket = client_socket
+
+            except (Exception, OSError) as e:
+                self.logger.exception("Resolution Of Master Domain Or Connection Failed. Aborting Processing")
+                self.failed_initializing = True
+                return False
+
 
         try:
 
@@ -249,7 +303,17 @@ class NodeClientProcess:
             self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
 
-            self.execute_connect_to_host_procedure()
+            connection_succeeded = self.execute_connect_to_host_procedure()
+            if not connection_succeeded:
+                self.logger.fatal("Failed To Connect To Master. Node Is Unable To Continue. Terminating")
+                action = dict()
+                action['command'] = "SYS"
+                action['from'] = "CLIENT"
+                action['to'] = "NODE"
+                action['params'] = "SHUTDOWN"
+                self.child_pipe.send(action)
+                exit()
+
 
             while True:
 
@@ -312,7 +376,6 @@ class NodeClientProcess:
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
-
 
                     elif command_dict["command"] == "CREATE" and command_dict["params"] == "DEPLOYMENT":
                         self.logger.info("Create Deployment Request Detected. Executing")

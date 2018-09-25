@@ -3,12 +3,13 @@ import errno
 from db.models import Node
 from db.models import Key
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import QueueHandler
 from db import SQLiteManager
 import threading
 import utils.vesselhelper as vh
 import json
 
+ssl = None
 
 def pipe_recv_handler(node_listener_process, logger, child_pipe):
     logger.info("Pipe Recv Handler Spawned. Listening For Messages")
@@ -291,6 +292,17 @@ class NodeListenerProcess:
             listener_socket = socket(AF_INET, SOCK_STREAM)
             listener_socket.bind((self._bind_ip, int(self._port)))
             listener_socket.listen(10)
+
+            if self._config["SSL"]["enabled"] == 'True':
+                self.logger.info("SSL Sockets Enabled. Configuring SSL")
+
+                global ssl
+                import ssl
+
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ssl_context.load_cert_chain(self._config["SSL"]["master_cert"], self._config["SSL"]["master_key"])
+                listener_socket = ssl_context.wrap_socket(listener_socket, server_side=True)
+
             self.logger.info("Storing Socket Information")
             # store listening socket fd
             self.connections[listener_socket.fileno()] = listener_socket
@@ -298,8 +310,37 @@ class NodeListenerProcess:
 
             while True:
 
-                node_socket, address = listener_socket.accept()
-                self.logger.info("New Connection Detected. Processing And Adding To System")
+                node_socket = None
+                address = None
+
+                if self._config["SSL"]["enabled"] == 'True':
+                    try:
+
+                        tpl_node_socket, tpl_address = listener_socket.accept()
+                        node_socket = tpl_node_socket
+                        address = tpl_address
+                        self.logger.info("New Connection Detected. Processing And Adding To System")
+                    except ssl.SSLEOFError:
+                        self.logger.exception("SSLEOFError Occurred. Connection Was Terminated Abruptly. Can't Use " +
+                                              "Anything From Sockets")
+                        continue
+                    except ssl.CertificateError as ce:
+                        self.logger.exception("Certificate Error Occurred. Client Certificate Validation Failed. Not " +
+                                              "Accepting Connection")
+                        # python 3.7 has additional output that can be done here
+                        continue
+                    except ssl.SSLError:
+                        self.logger.exception("Generic SSL Error Occurred. Aborting Connection Attempt")
+                        continue
+                else:
+                    try:
+                        tpl_node_socket, tpl_address = listener_socket.accept()
+                        node_socket = tpl_node_socket
+                        address = tpl_address
+                        self.logger.info("New Connection Detected. Processing And Adding To System")
+                    except:
+                        self.logger.exception("Acceptance Of New Connection Failed. Aborting")
+                        continue
 
                 self.logger.info("Enabling Keep Alive Policy In New Connection")
                 node_socket.ioctl(SIO_KEEPALIVE_VALS, (1, 10000, 3000))

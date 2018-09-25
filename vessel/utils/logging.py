@@ -68,8 +68,8 @@ def initialize_all_logging_configuration(log_dir):
     node_client_process_format = logging.Formatter(
         '%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s'
     )
-    node_handler.setFormatter(node_client_process_format)
-    node_logger.addHandler(node_client_process_handler)
+    node_client_process_handler.setFormatter(node_client_process_format)
+    node_client_process_logger.addHandler(node_client_process_handler)
 
     http_listener_process_logger = logging.getLogger("HttpListenerProcessLogger")
     http_listener_process_logger.setLevel(logging.DEBUG)

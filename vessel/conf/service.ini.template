@@ -14,6 +14,12 @@ scripts_dir=C:\vessel\scripts
 # give this node a name
 name=hellberg
 
+[SSL]
+enabled=True
+master_cert=C:\vessel\vessel\certs\master.pem
+master_key=C:\vessel\vessel\certs\master.key
+
+
 [LOGGING]
 # logging location including maximum file size and number of files to be kept. vessel will automatically remove old
 # logs when more files then the max_file_count have built up
