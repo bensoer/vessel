@@ -70,7 +70,7 @@ class SQLiteManager:
         engine.id = self._cursor.lastrowid
         self._conn.commit()
 
-        return engine
+        return self.getEngineOfGuid(guid)
 
     def getAllEngines(self):
         query = "SELECT id, guid, name, path FROM engines"
@@ -110,7 +110,7 @@ class SQLiteManager:
 
     def deleteEngineOfGuid(self, engine_guid):
 
-        query = "DELETE FROM engine WHERE guid = '" + str(engine_guid) + "'"
+        query = "DELETE FROM engines WHERE guid = '" + str(engine_guid) + "'"
         self._cursor.execute(query)
         self._conn.commit()
 
@@ -136,7 +136,7 @@ class SQLiteManager:
         node.id = self._cursor.lastrowid
         self._conn.commit()
 
-        return node
+        return self.getNodeOfGuid(guid)
 
     def updateNode(self, node):
 
@@ -146,16 +146,17 @@ class SQLiteManager:
         port = node.port
         state = node.state
         guid = node.guid
+        node_id = node.id
 
-        query = "UPDATE nodes SET name='{name}', ip='{ip}', port='{port}', key_guid='{key_guid}', state='{state}' WHERE guid='{guid}'"
-        query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state)
+        query = "UPDATE nodes SET name='{name}', ip='{ip}', port='{port}', key_guid='{key_guid}', state='{state}', guid='{guid}' WHERE id='{id}'"
+        query = query.format(guid=str(guid), name=name, ip=ip, port=port, key_guid=str(key_guid), state=state, id=node_id)
 
         self._logger.debug("SQLiteManager - Updating Node Record")
         self._cursor.execute(query)
 
         self._conn.commit()
 
-        return self.getNodeOfGuid(guid)
+        return self.getNodeOfId(node_id)
 
 
     def getNodeOfGuid(self, node_guid):
@@ -164,6 +165,16 @@ class SQLiteManager:
         all_nodes = self.getAllNodes()
         for node in all_nodes:
             if node.guid == uuid.UUID(str(node_guid)):
+                return node
+
+        return None
+
+    def getNodeOfId(self, node_id):
+        self._logger.debug("SQLiteManager-  Getting Node Of Id: " + str(node_id))
+
+        all_nodes = self.getAllNodes()
+        for node in all_nodes:
+            if node.id == node_id:
                 return node
 
         return None
@@ -375,6 +386,16 @@ class SQLiteManager:
         self._conn.commit()
 
     def insertScriptIfNotExists(self, script):
+        '''
+        insertScriptIfNotExists will only insert the script inot the db if a script with the same file_name does not
+        already exist. IF no script with the same file_name exists, the script is inserted and its inserted value is
+        deserialized back as the method response. IF a script with the same file_name DOES exist, then
+        insertScriptIfNotExists will return the already existing script from the db, and not the passed in one.
+        :param script: Script - the script being inserted into the db if an entry with the same file_name value does
+        not already exist
+        :return: Script - either the newly inserted script as a Script object, or the Script object of the already
+        existing script
+        '''
         guid = script.guid
         if script.guid == None:
             guid = uuid.uuid4()
@@ -397,11 +418,11 @@ class SQLiteManager:
             self._conn.commit()
 
             script.id = script_id
-            return script
+            return self.getScriptOfId(script_id)
 
         else:
             script.id = existing_script[0]
-            script.guid = existing_script[1]
+            script.guid = uuid.UUID(existing_script[1])
             script.file_name = existing_script[2]
             script.script_engine = existing_script[3]
             script.file_path = existing_script[4]
