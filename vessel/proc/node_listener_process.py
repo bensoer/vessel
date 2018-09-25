@@ -315,7 +315,6 @@ class NodeListenerProcess:
 
                 if self._config["SSL"]["enabled"] == 'True':
                     try:
-
                         tpl_node_socket, tpl_address = listener_socket.accept()
                         node_socket = tpl_node_socket
                         address = tpl_address

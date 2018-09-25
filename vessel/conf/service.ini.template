@@ -3,6 +3,7 @@
 root_dir=C:\vessel
 
 # for a node configuration - specify the domain and port to connect to the master
+# note: for SSL the master_domain value is used in validating certificate hostname value
 master_domain=master.someendpoint.com
 master_port=5026
 # the password to be used to secure private keys and generate AES passwords. A large and strong password is recommended
@@ -18,7 +19,6 @@ name=hellberg
 enabled=True
 master_cert=C:\vessel\vessel\certs\master.pem
 master_key=C:\vessel\vessel\certs\master.key
-
 
 [LOGGING]
 # logging location including maximum file size and number of files to be kept. vessel will automatically remove old
@@ -48,9 +48,3 @@ bind_ip=0.0.0.0
 # master configuration - specify the port and ip to listen for incoming http requests
 port=5024
 bind_ip=0.0.0.0
-
-#server the http server over ssl
-ssl=True
-#if not cert or key given - app will generate its own self-signed cert
-#cert_path="C:\mycert.crt"
-#key_path="C:\mykey.key"
