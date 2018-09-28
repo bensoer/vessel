@@ -4,14 +4,10 @@ import os
 import inspect
 import logging
 from vessel.db.sqlitemanager import SQLiteManager
-from db.models import Deployment
-from vessel.db.models import DeploymentScript
 from vessel.db.models import Engine
 from vessel.db.models import Key
 from vessel.db.models import Node
 from vessel.db.models import Script
-import random
-import string
 import test.utils.testutils as testutils
 import uuid
 
