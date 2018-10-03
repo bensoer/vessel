@@ -101,15 +101,20 @@ def execute_script(script_execute_list, logger):
                                  encoding="utf-8")
         process.check_returncode()  # will throw exception if execution failed
 
-        parsed_output = dict()
-        if "-" in process.stdout:
-            split_up_response = process.stdout.split("-")
-            for section in split_up_response:
-                space_index = section.find(" ")
-                if space_index != -1:
-                    key = section[:space_index]
-                    value = section[space_index + 1:]
-                    parsed_output[key] = value
+        parsed_output = None
+        try:
+            parsed_output = json.loads(process.stdout)
+        except json.JSONDecodeError as jde:
+            logger.debug("Script Execution Returned Non JSON Response. Attempting Alternative Parse", exec_info=True)
+
+            if "-" in process.stdout:
+                split_up_response = process.stdout.split("-")
+                for section in split_up_response:
+                    space_index = section.find(" ")
+                    if space_index != -1:
+                        key = section[:space_index]
+                        value = section[space_index + 1:]
+                        parsed_output[key] = value
 
         rawdata = dict()
         rawdata["parsed_output"] = parsed_output

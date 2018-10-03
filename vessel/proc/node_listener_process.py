@@ -1,6 +1,6 @@
 from socket import *
 import errno
-from db.models import Node
+from db.models import Node, Ping
 from db.models import Key
 import logging
 from logging.handlers import QueueHandler
@@ -8,8 +8,41 @@ from db import SQLiteManager
 import threading
 import utils.vesselhelper as vh
 import json
+import time
+from threading import Thread, Lock
+import uuid
 
 ssl = None
+
+
+def run_ping_cycle(logger, config, node_listener_process):
+    logger.info("Starting Ping Cycle")
+
+    sql_manager = SQLiteManager(logger, config)
+
+    while True:
+        time.sleep(120)  # - every 120 seconds
+        all_nodes = sql_manager.getAllNodes()
+
+        for node in all_nodes:
+
+            node.state = "PENDING"
+            sql_manager.updateNode(node)
+
+            command = dict()
+            command["command"] = "SYS"
+            command["params"] = "PING"
+            command["to"] = "NODE"
+            command["from"] = "MASTER"
+            command["rawdata"] = (str(node.guid),)
+
+            ping_record = Ping()
+            ping_record.send_time = time.time()
+            ping_record.node_guid = node.guid
+            sql_manager.insertPing(ping_record)
+
+            node_listener_process.forwardCommandToAppropriateNode(command, str(node.guid))
+
 
 def pipe_recv_handler(node_listener_process, logger, child_pipe):
     logger.info("Pipe Recv Handler Spawned. Listening For Messages")
@@ -105,6 +138,20 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
                 os_error = OSError()
                 os_error.errno = errno.ECONNRESET
                 raise os_error
+
+            elif command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" \
+                    and command_dict["param"] == "PING":
+                logger.debug("Internal Ping Call Received. Processing")
+
+                node_guid = command_dict["rawdata"][0]
+                last_sent_ping = sql_manager.getLastUnReturnedPingOfNode(uuid.UUID(node_guid))
+                last_sent_ping.recv_time = time.time()
+                sql_manager.updatePing(last_sent_ping)
+
+                pinged_node = sql_manager.getNodeOfGuid(node_guid)
+                pinged_node.state = "UP"
+                sql_manager.updateNode(pinged_node)
+
             else:
                 child_pipe.send(command_dict)
 
@@ -166,6 +213,8 @@ class NodeListenerProcess:
 
     _all_to_read = []
 
+    forwarding_mutex = Lock()
+
     def __init__(self, initialization_tuple):
         child_pipe, config, logging_queue = initialization_tuple
 
@@ -190,6 +239,7 @@ class NodeListenerProcess:
         self.logger.info("Connection Complete")
 
     def forwardCommandToAppropriateNode(self, command, node_guid: str)->bool:
+        self.forwarding_mutex.acquire(blocking=True)
         self.logger.info("Now Attempting Forwarding Command To Appropriate Node")
         self.logger.info(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
@@ -201,6 +251,7 @@ class NodeListenerProcess:
 
         if node_socket2 is None:
             self.logger.info("WARNING: IP and Port Mapping Did Not Resolve To A Socket. Can't Forward Command")
+            self.forwarding_mutex.release()
             return False
 
         serialized_command = json.dumps(command)
@@ -219,6 +270,7 @@ class NodeListenerProcess:
             self.logger.info("Serialized Message Sent")
 
             sql_manager.closeEverything()  # can't use sql_manager after this
+            self.forwarding_mutex.release()
             return True
         except error as se:
             if se.errno == errno.ECONNRESET:
@@ -247,6 +299,7 @@ class NodeListenerProcess:
                 self.socketmap2portip.pop(node_socket2, None)
 
                 # return False to tell caller
+                self.forwarding_mutex.release()
                 return False
             else:
                 self.logger.info("ERROR: Unknown Socket Error Occured In Node Listener Process. Error Code " + str(se.errno))
@@ -306,6 +359,13 @@ class NodeListenerProcess:
             self.logger.info("Storing Socket Information")
             # store listening socket fd
             self.connections[listener_socket.fileno()] = listener_socket
+
+            self.logger.info("Now Starting Pinging Thread")
+            p_thread = threading.Thread(target=run_ping_cycle,
+                                        args=(self.logger, self._config, self))
+            p_thread.daemon = True
+            p_thread.start()
+
             self.logger.info("Now Entering Connection Acceptance Loop")
 
             while True:

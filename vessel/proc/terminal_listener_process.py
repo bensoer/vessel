@@ -66,7 +66,8 @@ class TerminalListenerProcess:
                 session_active = True
                 while session_active:
                     # listen for commands
-                    command = vh.read_command(node_socket)
+                    #command = vh.read_command(node_socket)
+                    command = None
                     # {something}
 
 

@@ -6,6 +6,8 @@ from db.models import Node
 from db.models import Deployment
 from db.models import DeploymentScript
 from db.models import Engine
+from db.models import Ping
+import time
 
 class SQLiteManager:
 
@@ -42,6 +44,9 @@ class SQLiteManager:
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS engines
                             (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, path TEXT)''')
 
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS pings
+                            (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, send_time INTEGER, recv_time INTEGER)''')
+
         self._conn.commit()
 
     def closeEverything(self):
@@ -51,6 +56,111 @@ class SQLiteManager:
         except:
             self._logger.exception("SQLiteManager - Exception Was Thrown While Shutting Down the SQLite Connection. " +
                                    "But Were Shutting Down - So Do We Care ?")
+
+    def getLastUnReturnedPingOfNode(self, node_guid):
+        all_pings = self.getAllPings()
+        for ping in all_pings:
+            if ping.node_guid == uuid.UUID(str(node_guid)) and ping.recv_time is None:
+                return ping
+        return None
+
+    def getAllPings(self):
+
+        query = "SELECT guid, node_guid, send_time, recv_time FROM pings"
+        self._logger.debug("SQLiteManager - Getting All Pings")
+        self._cursor.execute(query)
+
+        all_pings = list()
+        for ping in self._cursor.fetchall():
+            ping_model = Ping()
+            ping_model.guid = uuid.UUID(ping[0])
+            ping_model.node_guid = uuid.UUID(ping[1])
+            ping_model.send_time = ping[2]
+            ping_model.recv_time = ping[3]
+
+            all_pings.append(ping_model)
+
+        return all_pings
+
+    def updatePing(self, ping):
+
+        guid = ping.guid
+        ping_id = ping.id
+        node_guid = ping.node_guid
+        recv_time = ping.recv_time
+        send_time = ping.send_time
+
+        query = "UPDATE pings SET guid='{guid}', node_guid='{node_guid}', recv_time={recv_time}, send_time={send_time} WHERE id='{id}'"
+        query = query.format(guid=str(guid), node_guid=node_guid, recv_time=recv_time, send_time=send_time, id=ping_id)
+
+        self._logger.debug("SQLiteManager - Updating Ping Record")
+        self._cursor.execute(query)
+
+        self._conn.commit()
+
+        return self.getPingByGuid(guid)
+
+    def deletePingOfGuid(self, node_guid):
+
+        query = "DELETE FROM pings WHERE node_guid = '" + str(node_guid) + "'"
+        self._cursor.execute(query)
+        self._conn.commit()
+
+    def getAllPingsOfNode(self, node_guid):
+        all_pings_of_node = list()
+
+        all_pings = self.getAllPings()
+        for ping in all_pings:
+            if ping.node_guid == uuid.UUID(str(node_guid)):
+                all_pings_of_node.append(ping)
+        return all_pings_of_node
+
+    def deleteOldestSentPingOfNode(self, node_guid):
+        all_pings_of_node = self.getAllPingsOfNode(node_guid)
+
+        oldest_sent_ping = time.time()
+        oldest_ping_guid = None
+        for ping in all_pings_of_node:
+            if ping.send_time < oldest_sent_ping:
+                oldest_ping_guid = ping.send_time
+                oldest_ping_guid = ping.guid
+
+        self.deletePingOfGuid(oldest_ping_guid)
+
+    def insertPing(self, ping):
+
+        guid = ping.guid
+        if ping.guid == None:
+            guid = uuid.uuid4()
+
+        node_guid = ping.node_guid
+        recv_time = ping.recv_time
+        send_time = ping.send_time
+
+        self._logger.debug("SQLiteManager - Sorting Ping Records Of Node. Determining If Deletion Is Needed")
+        while len(self.getAllPingsOfNode(node_guid)) > 25:
+            self._logger.debug("SQLiteManager - More than 25 Ping Records Found. Deleting Oldest Entry And Re-evaulating")
+            self.deleteOldestSentPingOfNode(node_guid)
+
+        query = "INSERT INTO pings(guid, node_guid, send_time, recv_time) VALUES ('{guid}', '{node_guid}', {send_time}, {recv_time})"
+        query = query.format(guid=guid, node_guid=str(node_guid), send_time=send_time, recv_time=recv_time)
+
+        self._logger.debug("SQLiteManager - Inserting Ping Record")
+        self._cursor.execute(query)
+
+        ping.id = self._cursor.lastrowid
+        self._conn.commit()
+
+        return self.getPingByGuid(guid)
+
+    def getPingByGuid(self, ping_guid):
+        self._logger.debug("SQLiteManager - Getting Ping Of Guid: " + str(ping_guid))
+
+        all_pings = self.getAllPings()
+        for ping in all_pings:
+            if ping.guid == uuid.UUID(str(ping_guid)):
+                return ping
+        return None
 
     def insertEngine(self, engine):
 
@@ -113,7 +223,6 @@ class SQLiteManager:
         query = "DELETE FROM engines WHERE guid = '" + str(engine_guid) + "'"
         self._cursor.execute(query)
         self._conn.commit()
-
 
     def insertNode(self, node):
 

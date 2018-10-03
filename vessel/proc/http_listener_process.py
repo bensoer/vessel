@@ -140,8 +140,16 @@ class HttpListenerProcess:
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
             else:
-                return jsonify(answer['rawdata'])
+                sql_manager = SQLiteManager(self._config, self.logger)
+                all_pings = sql_manager.getAllPingsOfNode(uuid.UUID(node_guid))
 
+                all_pings_as_dict = list()
+                for ping in all_pings:
+                    all_pings_as_dict.append(ping.toDictionary())
+
+                answer["ping_history"] = all_pings_as_dict
+                sql_manager.closeEverything()
+                return jsonify(answer['rawdata'])
 
         @app.route("/api/script", methods=['GET'])
         def GETAllScripts():

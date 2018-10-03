@@ -435,6 +435,20 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "SYS" and command_dict["params"] == "PING":
+                        # response is basically just to send what we got back
+                        self.logger.debug("System Ping Call Received. Were Still Alive. Replying")
+
+                        temp = command_dict["to"]
+                        command_dict["to"] = command_dict["from"]
+                        command_dict["from"] = temp
+
+                        serialized_data = json.dumps(command_dict)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
                     elif command_dict["command"] == "SYS" and command_dict["params"] == "RESTART":
                         self.logger.info("Master Node Restart Request Received. Disconnecting and Starting "
                                          "Reconnect Loop")
