@@ -353,6 +353,18 @@ class NodeClientProcess:
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
 
+                    elif command_dict["command"] == "GET" and command_dict["params"] == "SCRIPTS.HISTORY":
+                        self.logger.info("Fetch Script Exeuction History Request Detected. Executing")
+
+                        response = taskrunner.fetch_node_script_execution_history(self._sql_manager, command_dict, self.logger)
+
+                        self.logger.info("Fetched Data. Now Serializing For Response")
+                        serialized_data = json.dumps(response)
+                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                                                                                   self._private_key_password,
+                                                                                   self._node_aes_key))
+                        self.logger.info("Response Sent")
+
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCAN.SCRIPTS":
                         self.logger.info("Scan Scripts Request Detected. Executing")
 

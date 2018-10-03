@@ -2,6 +2,8 @@ import uuid
 import subprocess
 from subprocess import CalledProcessError
 import json
+
+from db.models import Execution
 from db.models.Script import Script
 from db.models.Deployment import Deployment
 from db.models.DeploymentScript import DeploymentScript
@@ -146,7 +148,6 @@ def execute_script_on_node(sql_manager, request, logger):
     script_guid = request['rawdata'][1]
 
     all_scripts = sql_manager.getAllScripts()
-    script_found = False
     for script in all_scripts:
         if script.guid == uuid.UUID(script_guid):
 
@@ -154,9 +155,18 @@ def execute_script_on_node(sql_manager, request, logger):
             engine = sql_manager.getEngineOfName(script.script_engine)
             execution_params = _get_execute_params_for_engine(engine, script)
 
-            succesful, results_data = execute_script(execution_params, logger)
+            successful, results_data = execute_script(execution_params, logger)
 
-            if succesful:
+            execution = Execution()
+            execution.script_guid = script.guid
+            execution.stdout = results_data['data'][0]
+            execution.stderr = results_data['data'][1]
+            execution.return_code = results_data['data'][2]
+            execution.successful = successful
+
+            sql_manager.insertExecution(execution)
+
+            if successful:
                 old_from = request['from']
                 request['from'] = request['to']
                 request['to'] = old_from
@@ -284,6 +294,21 @@ def create_deployment(sql_manager, request, logger):
 
     return request
 
+def fetch_node_script_execution_history(sql_manager, request, logger):
+
+    script_guid = request['rawdata'][1]
+    all_executions = sql_manager.getAllExecutionsOfScriptGuid(script_guid)
+
+    all_executions_to_dictionary = list()
+    for execution in all_executions:
+        all_executions_to_dictionary.append(execution.toDictionary())
+
+    temp = request['from']
+    request['from'] = request['to']
+    request['params'] = 'SUCCESS'
+    request['rawdata'] = all_executions_to_dictionary
+
+    return request
 
 def fetch_node_deployments(sql_manager, request, logger):
     all_deployments = sql_manager.getAllDeployments()

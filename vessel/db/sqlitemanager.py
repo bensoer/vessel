@@ -7,7 +7,9 @@ from db.models import Deployment
 from db.models import DeploymentScript
 from db.models import Engine
 from db.models import Ping
+from db.models import Execution
 import time
+
 
 class SQLiteManager:
 
@@ -45,7 +47,10 @@ class SQLiteManager:
                             (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, path TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS pings
-                            (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, send_time INTEGER, recv_time INTEGER)''')
+                            (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, send_time REAL, recv_time REAL)''')
+
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS executions
+                            (id INTEGER PRIMARY KEY, guid TEXT, time REAL, script_guid TEXT, stdout TEXT, stderr TEXT, return_code INTEGER, successful INTEGER)''')
 
         self._conn.commit()
 
@@ -56,6 +61,76 @@ class SQLiteManager:
         except:
             self._logger.exception("SQLiteManager - Exception Was Thrown While Shutting Down the SQLite Connection. " +
                                    "But Were Shutting Down - So Do We Care ?")
+
+    def getAllExecutionsOfScriptGuid(self, script_guid):
+        self._logger.debug("SQLiteManager - Fetching All Executions of Script")
+
+        query = "SELECT id, guid, [time], script_guid, stdout, stderr, return_code, successful FROM executions WHERE script_guid = '{script_guid}' ORDER BY [time] DESC"
+        query = query.format(script_guid=script_guid)
+        self._cursor.execute(query)
+
+        all_executions = list()
+        for execution_row in self._cursor.fetchall():
+
+            execution_model = Execution()
+            execution_model.id = execution_row[0]
+            execution_model.guid = uuid.UUID(execution_row[1])
+            execution_model.time = execution_row[2]
+            execution_model.script_guid = uuid.UUID(execution_row[3])
+            execution_model.stdout = uuid.UUID(execution_row[4])
+            execution_model.stderr = uuid.UUID(execution_row[5])
+            execution_model.return_code = execution_row[6]
+            execution_model.successful = (execution_row[7] == 1)
+
+            all_executions.append(execution_model)
+
+        return all_executions
+
+
+    def getExecutionOfGuid(self, execution_guid):
+        self._logger.debug("SQLiteManager - Fetching Execution Of Guid")
+        query = "SELECT id, guid, [time], script_guid, stdout, stderr, return_code, successful FROM executions WHERE guid = '{guid}'"
+        query = query.format(guid=str(execution_guid))
+
+        self._cursor.execute(query)
+
+        execution_row = self._cursor.fetchone()
+        if execution_row is None:
+            return None
+        else:
+            execution_model = Execution()
+            execution_model.id = execution_row[0]
+            execution_model.guid = uuid.UUID(execution_row[1])
+            execution_model.time = execution_row[2]
+            execution_model.script_guid = uuid.UUID(execution_row[3])
+            execution_model.stdout = uuid.UUID(execution_row[4])
+            execution_model.stderr = uuid.UUID(execution_row[5])
+            execution_model.return_code = execution_row[6]
+            execution_model.successful = (execution_row[7] == 1)
+
+            return execution_model
+
+    def insertExecution(self, execution):
+        guid = execution.guid
+        if execution.guid is None:
+            guid = uuid.uuid4()
+
+        time = execution.time
+        script_guid = execution.script_guid
+        stdout = execution.stdout
+        stderr = execution.stderr
+        return_code = execution.return_code
+        successful = execution.successful
+
+        query = "INSERT INTO exeuctions (guid, [time], script_guid, stdout, stderr, return_code, successful) VALUES ('{guid}', '{time}', '{script_guid}', '{stdout}', '{stderr}', {return_code}, {successful})"
+        query = query.format(guid=str(guid), time=time, script_guid=str(script_guid), stdout=stdout, stderr=stderr, return_code=return_code, successful=int(successful))
+
+        self._logger.debug("SQLiteManager - Inserting Execution Record")
+        self._cursor.execute(query)
+
+        execution.id = self._cursor.lastrowid
+
+        return self.getExecutionOfGuid(guid)
 
     def getLastUnReturnedPingOfNode(self, node_guid):
         all_pings = self.getAllPings()

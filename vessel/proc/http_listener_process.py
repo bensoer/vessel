@@ -315,6 +315,45 @@ class HttpListenerProcess:
             else:
                 return jsonify(all_scripts)
 
+        @app.route("/api/node/<node_guid>/script/<script_guid>/execute/history", methods=['GET'])
+        def GETExecuteHistoryOfScriptOnNode(node_guid, script_guid):
+            self.logger.info("Fetching Execution History Of Script Of Guid: " + script_guid + " On Node Of Guid: " + node_guid)
+
+            try:
+                uuid.UUID(node_guid, version=4)
+            except:
+                abort(400, "The Passed In Node Guid Is Invalid")
+
+            try:
+                uuid.UUID(script_guid, version=4)
+            except:
+                abort(400, "The Passed In Script Guid Is Invalid")
+
+            self._pipe_lock.acquire()
+
+            action = dict()
+            action['command'] = "GET"
+            action['from'] = "HTTP"
+            action['to'] = "NODE"
+            action['params'] = "SCRIPTS.HISTORY"
+            action['rawdata'] = (node_guid, script_guid)
+
+            self.child_pipe.send(action)
+
+            answer = self.child_pipe.recv()
+            self._pipe_lock.release()
+
+            if answer['command'] == "ERROR":
+                return handle_internal_error(answer)
+            else:
+
+                response = dict()
+                response["script_guid"] = script_guid
+                response["node_guid"] = node_guid
+                response["execution_history"] = answer['rawdata']
+
+                return jsonify(response)
+
         @app.route("/api/node/<node_guid>/script/<script_guid>/execute", methods=['POST'])
         def POSTExecuteScriptOnNode(node_guid, script_guid):
             self.logger.info("Executing Script Of Guid: " + script_guid + " On Node Of Guid: " + node_guid)
