@@ -44,6 +44,7 @@ def run_ping_cycle(logger, config, node_listener_process):
 
             node_listener_process.forwardCommandToAppropriateNode(command, str(node.guid))
 
+        del all_nodes
 
 def pipe_recv_handler(node_listener_process, logger, child_pipe):
     logger.info("Pipe Recv Handler Spawned. Listening For Messages")
@@ -246,7 +247,14 @@ class NodeListenerProcess:
         self.logger.info(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
         sql_manager = SQLiteManager(self._config, self.logger)
+
         node = sql_manager.getNodeOfGuid(str(node_guid))
+        if node is None:
+            self.logger.warning("Could Not Find Node Belonging To Guid: " + str(node_guid) +
+                                ". Unable To Forward Message")
+            self.forwarding_mutex.release()
+            return False
+
         self.logger.info("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
         node_socket2 = self.portipmap2socket.get(node.ip + ":" + str(node.port), None)
         self.logger.info("Socket: " + str(node_socket2))
@@ -273,6 +281,7 @@ class NodeListenerProcess:
 
             sql_manager.closeEverything()  # can't use sql_manager after this
             self.forwarding_mutex.release()
+            del sql_manager
             return True
         except error as se:
             if se.errno == errno.ECONNRESET:
@@ -309,6 +318,8 @@ class NodeListenerProcess:
                 self.logger.info(se)
         finally:
             sql_manager.closeEverything()  # can't use sql_manager after this
+            del sql_manager
+
 
     def start(self):
         try:

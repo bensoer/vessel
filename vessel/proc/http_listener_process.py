@@ -123,6 +123,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
             action = dict()
@@ -198,6 +199,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
             # now query to get the scripts
@@ -226,6 +228,7 @@ class HttpListenerProcess:
                 uuid.UUID(script_guid, version=4)
             except:
                 abort(400, "The Passed In Script Guid Is Invalid")
+                return
 
             uuid_script_guid = uuid.UUID(script_guid)
 
@@ -266,7 +269,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
-
+                return
 
             uuid_node_guid = uuid.UUID(node_guid)
 
@@ -291,6 +294,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
             # now query to get the scripts
@@ -315,7 +319,7 @@ class HttpListenerProcess:
             else:
                 return jsonify(all_scripts)
 
-        @app.route("/api/node/<node_guid>/script/<script_guid>/execute/history", methods=['GET'])
+        @app.route("/api/node/<node_guid>/script/<script_guid>/history", methods=['GET'])
         def GETExecuteHistoryOfScriptOnNode(node_guid, script_guid):
             self.logger.info("Fetching Execution History Of Script Of Guid: " + script_guid + " On Node Of Guid: " + node_guid)
 
@@ -323,11 +327,13 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             try:
                 uuid.UUID(script_guid, version=4)
             except:
                 abort(400, "The Passed In Script Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
 
@@ -362,11 +368,13 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             try:
                 uuid.UUID(script_guid, version=4)
             except:
                 abort(400, "The Passed In Script Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
 
@@ -405,6 +413,7 @@ class HttpListenerProcess:
                 uuid.UUID(script_guid, version=4)
             except:
                 abort(400, "The Passed In Script Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
 
@@ -444,11 +453,13 @@ class HttpListenerProcess:
                     uuid.UUID(script_guid, version=4)
                 except:
                     abort(400, "The Passed In Script Guid Is Invalid")
+                    return
 
                 try:
                     uuid.UUID(node_guid, version=4)
                 except:
                     abort(400, "The Passed In Node Guid Is Invalid")
+                    return
 
                 self.logger.info("Migrating Script Of Guid: " + script_guid + " To Node Of Guid: " + node_guid)
 
@@ -502,6 +513,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
             # now query to get the scripts
@@ -539,6 +551,7 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
             action = dict()
@@ -588,11 +601,13 @@ class HttpListenerProcess:
                 uuid.UUID(node_guid, version=4)
             except:
                 abort(400, "The Passed In Node Guid Is Invalid")
+                return
 
             try:
                 uuid.UUID(deployment_guid, version=4)
             except:
                 abort(400, "The Passed In Deployment Guid Is Invalid")
+                return
 
             self._pipe_lock.acquire()
 

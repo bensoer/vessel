@@ -44,6 +44,8 @@ def catalogue_path(path, known_scripts, sqlite_manager, logger):
                 script.file_path = path
                 sqlite_manager.insertScript(script)
 
+    del script_files
+
 
 def catalogue_local_scripts(sqlite_manager, script_dir, logger):
     logger.info("Searching For New Scripts On The System")
@@ -64,6 +66,8 @@ def catalogue_local_scripts(sqlite_manager, script_dir, logger):
             logger.info("Script No Longer Exists. Deleting From DB: " + known_script.file_path + os.sep
                         + known_script.file_name)
             sqlite_manager.deleteScriptOfId(known_script.id)
+
+    del known_scripts
 
 
 def catalogue_local_engines(sqlite_manager, logger):
