@@ -9,7 +9,7 @@ import threading
 import utils.vesselhelper as vh
 import json
 import time
-from threading import Thread, Lock
+from threading import Lock
 import uuid
 
 ssl = None
@@ -18,10 +18,11 @@ ssl = None
 def run_ping_cycle(logger, config, node_listener_process):
     logger.info("Starting Ping Cycle")
 
-    sql_manager = SQLiteManager(logger, config)
+    sql_manager = SQLiteManager(config, logger)
 
     while True:
         time.sleep(120)  # - every 120 seconds
+        logger.debug("Sleep Cycle Complete. Pinging All Nodes For Data")
         all_nodes = sql_manager.getAllNodes()
 
         for node in all_nodes:
@@ -131,22 +132,23 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
 
             command_dict = json.loads(command)
 
-            if command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" \
-                    and command_dict["param"] == "CONN.CLOSE":
+            if command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" and command_dict["params"] == "CONN.CLOSE":
                 # this means the remote node is gracefully exiting. We should treate this as if it disconnected
                 logger.info("Graceful Disconnect From Node Detected. Throwing Exception To Trigger Disconnection")
                 os_error = OSError()
                 os_error.errno = errno.ECONNRESET
                 raise os_error
 
-            elif command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" \
-                    and command_dict["param"] == "PING":
+            elif command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" and command_dict["params"] == "PING":
                 logger.debug("Internal Ping Call Received. Processing")
 
                 node_guid = command_dict["rawdata"][0]
                 last_sent_ping = sql_manager.getLastUnReturnedPingOfNode(uuid.UUID(node_guid))
-                last_sent_ping.recv_time = time.time()
-                sql_manager.updatePing(last_sent_ping)
+                if last_sent_ping is None:
+                    logger.error("Failed to find last ping entry for node. Ping stats may be obscured over next while")
+                else:
+                    last_sent_ping.recv_time = time.time()
+                    sql_manager.updatePing(last_sent_ping)
 
                 pinged_node = sql_manager.getNodeOfGuid(node_guid)
                 pinged_node.state = "UP"

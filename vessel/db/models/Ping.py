@@ -5,8 +5,8 @@ class Ping:
     id = None
     guid = None
     node_guid = None
-    send_time = None
-    recv_time = None
+    send_time = -1
+    recv_time = -1
 
     def toDictionary(self):
         return {

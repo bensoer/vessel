@@ -135,23 +135,24 @@ class SQLiteManager:
     def getLastUnReturnedPingOfNode(self, node_guid):
         all_pings = self.getAllPings()
         for ping in all_pings:
-            if ping.node_guid == uuid.UUID(str(node_guid)) and ping.recv_time is None:
+            if ping.node_guid == uuid.UUID(str(node_guid)) and ping.recv_time < 0:
                 return ping
         return None
 
     def getAllPings(self):
 
-        query = "SELECT guid, node_guid, send_time, recv_time FROM pings"
+        query = "SELECT id, guid, node_guid, send_time, recv_time FROM pings"
         self._logger.debug("SQLiteManager - Getting All Pings")
         self._cursor.execute(query)
 
         all_pings = list()
         for ping in self._cursor.fetchall():
             ping_model = Ping()
-            ping_model.guid = uuid.UUID(ping[0])
-            ping_model.node_guid = uuid.UUID(ping[1])
-            ping_model.send_time = ping[2]
-            ping_model.recv_time = ping[3]
+            ping_model.id = ping[0]
+            ping_model.guid = uuid.UUID(ping[1])
+            ping_model.node_guid = uuid.UUID(ping[2])
+            ping_model.send_time = ping[3]
+            ping_model.recv_time = ping[4]
 
             all_pings.append(ping_model)
 
@@ -175,9 +176,9 @@ class SQLiteManager:
 
         return self.getPingByGuid(guid)
 
-    def deletePingOfGuid(self, node_guid):
+    def deletePingOfGuid(self, ping_guid):
 
-        query = "DELETE FROM pings WHERE node_guid = '" + str(node_guid) + "'"
+        query = "DELETE FROM pings WHERE guid = '" + str(ping_guid) + "'"
         self._cursor.execute(query)
         self._conn.commit()
 
@@ -197,7 +198,7 @@ class SQLiteManager:
         oldest_ping_guid = None
         for ping in all_pings_of_node:
             if ping.send_time < oldest_sent_ping:
-                oldest_ping_guid = ping.send_time
+                oldest_sent_ping = ping.send_time
                 oldest_ping_guid = ping.guid
 
         self.deletePingOfGuid(oldest_ping_guid)
@@ -217,8 +218,8 @@ class SQLiteManager:
             self._logger.debug("SQLiteManager - More than 25 Ping Records Found. Deleting Oldest Entry And Re-evaulating")
             self.deleteOldestSentPingOfNode(node_guid)
 
-        query = "INSERT INTO pings(guid, node_guid, send_time, recv_time) VALUES ('{guid}', '{node_guid}', {send_time}, {recv_time})"
-        query = query.format(guid=guid, node_guid=str(node_guid), send_time=send_time, recv_time=recv_time)
+        query = "INSERT INTO pings (guid, node_guid, send_time, recv_time) VALUES ('{guid}', '{node_guid}', {send_time}, {recv_time})"
+        query = query.format(guid=str(guid), node_guid=str(node_guid), send_time=send_time, recv_time=recv_time)
 
         self._logger.debug("SQLiteManager - Inserting Ping Record")
         self._cursor.execute(query)
@@ -247,7 +248,7 @@ class SQLiteManager:
         path = engine.path
 
         query = "INSERT INTO engines (guid, [name], path) VALUES ('{guid}', '{name}', '{path}')"
-        query = query.format(guid=guid, name=name, path=path)
+        query = query.format(guid=str(guid), name=name, path=path)
 
         self._logger.debug("SQLiteManager - Inserting Engine Record")
         self._cursor.execute(query)

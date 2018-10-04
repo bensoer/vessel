@@ -87,6 +87,7 @@ GET - For fetching information from nodes
 - SCRIPTS - Fetch scripts on a node. The data is fetched from the database on the node
 - PING - Fetch general node information and meta
 - DEPLOYMENTS - Fetch deployment information
+- SCRIPTS.HISTORY - Fetch script execution history on node. The data is fetched from the database on the node
 
 EXEC - For executing on nodes
 - SCAN.SCRIPTS - Rescan the file system for scripts data. Works same as GET SCRIPTS except reads from the file-system
