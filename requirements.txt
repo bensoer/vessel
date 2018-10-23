@@ -15,3 +15,4 @@ shellescape==3.4.1
 urllib3==1.22
 uuid==1.30
 Werkzeug==0.14.1
+msgpack==0.5.6

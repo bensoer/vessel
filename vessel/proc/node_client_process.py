@@ -9,6 +9,7 @@ from db.models import Key
 import json
 import utils.taskrunner as taskrunner
 import time
+import msgpack
 
 ssl = None
 
@@ -58,7 +59,7 @@ class NodeClientProcess:
 
         self.logger.info("Connection Complete")
 
-    def _send_message(self, message:str, encrypt_with_key=None)->int:
+    def _send_message(self, message:bytes, encrypt_with_key=None)->int:
         try:
             if encrypt_with_key is not None:
 
@@ -71,7 +72,7 @@ class NodeClientProcess:
                 base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
                 return self._client_socket.send(base64_encrypted_bytes)
             else:
-                return self._client_socket.send(message.encode())
+                return self._client_socket.send(message)
         except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
@@ -131,7 +132,7 @@ class NodeClientProcess:
                 message = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
                 return message
             else:
-                return self._client_socket.recv(buffer_size).decode('utf8')
+                return self._client_socket.recv(buffer_size)
 
         except OSError as se:
             if se.errno == errno.ECONNRESET:
@@ -246,7 +247,7 @@ class NodeClientProcess:
             encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
                                                                                  self._master_public_key)
 
-            self._send_message(encrypted_aes_key.decode('utf-8'))
+            self._send_message(encrypted_aes_key)
 
             self.logger.info("Key Received From Master")
             self.logger.info(self._master_public_key)
@@ -335,7 +336,8 @@ class NodeClientProcess:
 
                     exit()
 
-                command_dict = json.loads(command)
+                #command_dict = json.loads(command)
+                command_dict = msgpack.unpackb(command, raw=False)
                 self.logger.info("COMMAND RECEIVED")
                 self.logger.info(command)
 
@@ -347,8 +349,9 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -359,8 +362,9 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_script_execution_history(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -372,8 +376,9 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -383,8 +388,9 @@ class NodeClientProcess:
 
                         response = taskrunner.get_ping_info(command_dict, self._config)
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -395,8 +401,9 @@ class NodeClientProcess:
                         response = taskrunner.create_deployment(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -407,8 +414,9 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_deployments(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -419,8 +427,9 @@ class NodeClientProcess:
                         response = taskrunner.execute_deployment_on_node(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -430,8 +439,9 @@ class NodeClientProcess:
 
                         response = taskrunner.execute_script_on_node(self._sql_manager, command_dict, self.logger)
 
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                self._private_key_password,
                                                                                self._node_aes_key))
 
@@ -441,8 +451,9 @@ class NodeClientProcess:
                         response = taskrunner.migrate(self._root_dir, self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -455,8 +466,9 @@ class NodeClientProcess:
                         command_dict["to"] = command_dict["from"]
                         command_dict["from"] = temp
 
-                        serialized_data = json.dumps(command_dict)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(command_dict)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -473,8 +485,9 @@ class NodeClientProcess:
                         response["param"] = "CONN.CLOSE"
                         response["rawdata"] = command_dict["rawdata"]
 
-                        serialized_data = json.dumps(response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                         self.logger.info("Response Sent")
@@ -513,8 +526,9 @@ class NodeClientProcess:
                         error_response['rawdata'] = ("Received Command Has No Mapping On This Node. Cannot Process Command",
                                                      command_dict)
 
-                        serialized_data = json.dumps(error_response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(error_response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
                 except Exception as e:
@@ -530,8 +544,9 @@ class NodeClientProcess:
                                                   " To: " + command_dict['to']
                         error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
-                        serialized_data = json.dumps(error_response)
-                        self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                        #serialized_data = json.dumps(error_response)
+                        serialized_data = msgpack.packb(response, use_bin_type=True)
+                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                                    self._private_key_password,
                                                                                    self._node_aes_key))
 
@@ -550,7 +565,8 @@ class NodeClientProcess:
                                                                             "This Event Or Is In A Broken State. Restart " \
                                                                             "To Recover"
 
-                serialized_data = json.dumps(error_response)
-                self._send_message(str(serialized_data), encrypt_with_key=(self._node_private_key,
+                #serialized_data = json.dumps(error_response)
+                serialized_data = msgpack.packb(response, use_bin_type=True)
+                self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
                                                                            self._private_key_password,
                                                                            self._node_aes_key))

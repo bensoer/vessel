@@ -11,6 +11,7 @@ import json
 import time
 from threading import Lock
 import uuid
+import msgpack
 
 ssl = None
 
@@ -131,7 +132,8 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
             command = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
             logger.info("Command Received From Socket: " + str(command))
 
-            command_dict = json.loads(command)
+            #command_dict = json.loads(command)
+            command_dict = msgpack.unpackb(command, raw=False)
 
             if command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" and command_dict["params"] == "CONN.CLOSE":
                 # this means the remote node is gracefully exiting. We should treate this as if it disconnected
@@ -242,7 +244,12 @@ class NodeListenerProcess:
         self.logger.info("Connection Complete")
 
     def forwardCommandToAppropriateNode(self, command, node_guid: str)->bool:
+
+        self.logger.debug("Acquiring Forwarding Mutex")
         self.forwarding_mutex.acquire(blocking=True)
+        self.logger.debug("Forwarding Mutex Acquired. Continueing")
+
+
         self.logger.info("Now Attempting Forwarding Command To Appropriate Node")
         self.logger.info(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
@@ -252,7 +259,9 @@ class NodeListenerProcess:
         if node is None:
             self.logger.warning("Could Not Find Node Belonging To Guid: " + str(node_guid) +
                                 ". Unable To Forward Message")
+            self.logger.debug("Releasing Forwarding Mutex")
             self.forwarding_mutex.release()
+            self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
             return False
 
         self.logger.info("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
@@ -261,10 +270,13 @@ class NodeListenerProcess:
 
         if node_socket2 is None:
             self.logger.info("WARNING: IP and Port Mapping Did Not Resolve To A Socket. Can't Forward Command")
+            self.logger.debug("Releasing Forwarding Mutex")
             self.forwarding_mutex.release()
+            self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
             return False
 
-        serialized_command = json.dumps(command)
+        #serialized_command = json.dumps(command)
+        serialized_command = msgpack.packb(command, use_bin_type=True)
         self.logger.info("Serialized Command: >" + str(serialized_command) + "<")
 
         try:
@@ -280,8 +292,9 @@ class NodeListenerProcess:
             self.logger.info("Serialized Message Sent")
 
             sql_manager.closeEverything()  # can't use sql_manager after this
+            self.logger.debug("Releasing Forwarding Mutex")
             self.forwarding_mutex.release()
-            del sql_manager
+            self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
             return True
         except error as se:
             if se.errno == errno.ECONNRESET:
@@ -310,12 +323,17 @@ class NodeListenerProcess:
                 self.socketmap2portip.pop(node_socket2, None)
 
                 # return False to tell caller
+                self.logger.debug("Releasing Forwarding Mutex")
                 self.forwarding_mutex.release()
+                self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
                 return False
             else:
                 self.logger.info("ERROR: Unknown Socket Error Occured In Node Listener Process. Error Code " + str(se.errno))
                 self.logger.info("Error Details: " + se.strerror)
                 self.logger.info(se)
+                self.logger.debug("Releasing Forwarding Mutex")
+                self.forwarding_mutex.release()
+                self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
         finally:
             sql_manager.closeEverything()  # can't use sql_manager after this
             del sql_manager
@@ -452,10 +470,12 @@ class NodeListenerProcess:
                 action['to'] = "NODE"
                 action['params'] = "PING"
 
-                serialized_command = json.dumps(action)
+                #serialized_command = json.dumps(action)
+                serialized_command = msgpack.packb(action, use_bin_type=True)
                 aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
                                                                             self.master_private_key,
                                                                             self.private_key_password)
+
                 base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
                                                                                         aes_key)
 
@@ -478,7 +498,8 @@ class NodeListenerProcess:
                 # place back into encrypted_bytes the trimmed and fixed message
                 encrypted_bytes = full_encrypted_bytes[1:len(full_encrypted_bytes)]
                 command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
-                command_dict = json.loads(command)
+                #command_dict = json.loads(command)
+                command_dict = msgpack.unpackb(command, raw=False)
 
                 if command_dict["command"] == "ERROR":
                     # connection had a fatal error

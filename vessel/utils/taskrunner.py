@@ -2,6 +2,7 @@ import uuid
 import subprocess
 from subprocess import CalledProcessError
 import json
+import traceback
 
 from db.models import Execution
 from db.models.Script import Script
@@ -107,7 +108,9 @@ def execute_script(script_execute_list, logger):
         try:
             parsed_output = json.loads(process.stdout)
         except json.JSONDecodeError as jde:
-            logger.debug("Script Execution Returned Non JSON Response. Attempting Alternative Parse", exec_info=True)
+            logger.debug("Script Execution Returned Non JSON Response. Attempting Alternative Parse")
+            stack_trace = traceback.format_exc()
+            logger.debug(stack_trace)
 
             if "-" in process.stdout:
                 split_up_response = process.stdout.split("-")

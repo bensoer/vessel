@@ -69,7 +69,9 @@ class HttpListenerProcess:
         def default_exception_handler(e):
             self.logger.exception(e)
             self.logger.info("Default Exception Handler Triggered. This Is Likely Fatal")
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
             return 800
 
 
@@ -98,7 +100,9 @@ class HttpListenerProcess:
         def GETPing():
             self.logger.info("Pinging Self")
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             action = dict()
             action['command'] = "GET"
             action['from'] = "HTTP"
@@ -108,7 +112,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -125,7 +131,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Node Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             action = dict()
             action['command'] = "GET"
             action['from'] = "HTTP"
@@ -136,7 +144,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -172,7 +182,9 @@ class HttpListenerProcess:
         def POSTScanForScripts():
             self.logger.info("Scanning Local System For Scripts")
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             # now query to get the scripts
             action = dict()
             action['command'] = "EXEC"
@@ -184,7 +196,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -201,7 +215,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Node Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             # now query to get the scripts
             action = dict()
             action['command'] = "EXEC"
@@ -213,7 +229,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -296,7 +314,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Node Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             # now query to get the scripts
             action = dict()
             action['command'] = "GET"
@@ -309,7 +329,9 @@ class HttpListenerProcess:
 
             answer = self.child_pipe.recv()
             all_scripts = answer["rawdata"]
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             for script in all_scripts:
                 script.pop("file_path", None)
@@ -335,7 +357,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Script Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
 
             action = dict()
             action['command'] = "GET"
@@ -347,7 +371,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -376,7 +402,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Script Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
 
             action = dict()
             action['command'] = "EXEC"
@@ -388,7 +416,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -415,7 +445,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Script Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
 
             action = dict()
             action['command'] = "EXEC"
@@ -427,7 +459,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -483,11 +517,15 @@ class HttpListenerProcess:
 
                         action['rawdata'] = base64.b64encode(all_file_contents).decode('utf-8')
 
+                        self.logger.debug("Waiting To Acquire Lock Before Proceeding")
                         self._pipe_lock.acquire()
+                        self.logger.debug("Lock Acquired. Executing")
                         self.child_pipe.send(action)
 
                         answer = self.child_pipe.recv()
+                        self.logger.debug("Releasing Lock")
                         self._pipe_lock.release()
+                        self.logger.debug("Lock Released. Other Requests Can Operate")
 
                         sql_manager.closeEverything()
                         if answer['command'] == "ERROR":
@@ -515,7 +553,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Node Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             # now query to get the scripts
             action = dict()
             action['command'] = "GET"
@@ -527,7 +567,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -553,7 +595,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Node Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
             action = dict()
             action['command'] = "CREATE"
             action['from'] = "HTTP"
@@ -563,7 +607,9 @@ class HttpListenerProcess:
 
             self.child_pipe.send(action)
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)
@@ -609,7 +655,9 @@ class HttpListenerProcess:
                 abort(400, "The Passed In Deployment Guid Is Invalid")
                 return
 
+            self.logger.debug("Waiting To Acquire Lock Before Proceeding")
             self._pipe_lock.acquire()
+            self.logger.debug("Lock Acquired. Executing")
 
             action = dict()
             action['command'] = "EXEC"
@@ -621,7 +669,9 @@ class HttpListenerProcess:
             self.child_pipe.send(action)
 
             answer = self.child_pipe.recv()
+            self.logger.debug("Releasing Lock")
             self._pipe_lock.release()
+            self.logger.debug("Lock Released. Other Requests Can Operate")
 
             if answer['command'] == "ERROR":
                 return handle_internal_error(answer)

@@ -33,21 +33,24 @@ def generate_aes_key(password:str)->bytes:
     return hash.digest()
 
 
-def encrypt_string_with_aes_key_to_base64_bytes(message:str, aes_key:bytes)->bytes:
+def encrypt_string_with_aes_key_to_base64_bytes(message:bytes, aes_key:bytes)->bytes:
 
     iv = Random.new().read(AES.block_size)
     cipher = AES.new(aes_key, AES.MODE_CBC, iv)
 
     # need to pad for CBC
-    padded_message = message + (AES.block_size - len(message) % AES.block_size) * chr(AES.block_size - len(message) % AES.block_size)
-    encrypted_message = iv + cipher.encrypt(padded_message.encode())
+
+    padding_data = (AES.block_size - len(message) % AES.block_size) * chr(AES.block_size - len(message) % AES.block_size)
+
+    padded_message = message + padding_data.encode()
+    encrypted_message = iv + cipher.encrypt(padded_message)
 
     base64_encoded_bytes = base64.b64encode(encrypted_message)
 
     return base64_encoded_bytes
 
 
-def decrypt_base64_bytes_with_aes_key_to_string(encrypted_base64_bytes:bytes, aes_key:bytes)->str:
+def decrypt_base64_bytes_with_aes_key_to_string(encrypted_base64_bytes:bytes, aes_key:bytes)->bytes:
 
     encrypted_message_with_iv = base64.b64decode(encrypted_base64_bytes)
     # bug in decoder doesn't handle not enough '=' eventhough they don't matter
@@ -61,7 +64,7 @@ def decrypt_base64_bytes_with_aes_key_to_string(encrypted_base64_bytes:bytes, ae
     # strips out the padding put in for CBC
     plaintext_bytes = padded_plaintext_bytes[:-ord(padded_plaintext_bytes[len(padded_plaintext_bytes)-1:])]
 
-    return plaintext_bytes.decode('utf-8')
+    return plaintext_bytes
 
 
 def encrypt_bytes_with_public_key_to_base64_bytes(bytes_message:bytes, exported_public_key:str)->bytes:
