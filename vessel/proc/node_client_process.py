@@ -3,12 +3,10 @@ import errno
 import logging
 from logging.handlers import QueueHandler
 from db import SQLiteManager
-import utils.vesselhelper as vh
 import utils.script_manager as sm
 from db.models import Key
 import utils.taskrunner as taskrunner
 import time
-import msgpack
 import utils.socketutils as socketutils
 import utils.cryptor as cryptor
 

@@ -46,6 +46,7 @@ def run_ping_cycle(logger, config, node_listener_process):
 
         del all_nodes
 
+
 def pipe_recv_handler(node_listener_process, logger, child_pipe):
     logger.info("Pipe Recv Handler Spawned. Listening For Messages")
     while True:
