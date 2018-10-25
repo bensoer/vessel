@@ -8,7 +8,9 @@ from db.models import DeploymentScript
 from db.models import Engine
 from db.models import Ping
 from db.models import Execution
-import time
+import datetime
+import time as t # time is used as a variable in places! sorry :(
+
 
 
 class SQLiteManager:
@@ -29,7 +31,7 @@ class SQLiteManager:
         self._cursor = self._conn.cursor()
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS keys
-                        (id INTEGER PRIMARY KEY , guid TEXT, name TEXT, description TEXT, key TEXT)''')
+                        (id INTEGER PRIMARY KEY , guid TEXT, name TEXT, description TEXT, [key] BLOB)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS nodes
                         (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, ip TEXT, port TEXT, key_guid TEXT, state TEXT)''')
@@ -77,8 +79,8 @@ class SQLiteManager:
             execution_model.guid = uuid.UUID(execution_row[1])
             execution_model.time = execution_row[2]
             execution_model.script_guid = uuid.UUID(execution_row[3])
-            execution_model.stdout = uuid.UUID(execution_row[4])
-            execution_model.stderr = uuid.UUID(execution_row[5])
+            execution_model.stdout = execution_row[4]
+            execution_model.stderr = execution_row[5]
             execution_model.return_code = execution_row[6]
             execution_model.successful = (execution_row[7] == 1)
 
@@ -103,8 +105,8 @@ class SQLiteManager:
             execution_model.guid = uuid.UUID(execution_row[1])
             execution_model.time = execution_row[2]
             execution_model.script_guid = uuid.UUID(execution_row[3])
-            execution_model.stdout = uuid.UUID(execution_row[4])
-            execution_model.stderr = uuid.UUID(execution_row[5])
+            execution_model.stdout = execution_row[4]
+            execution_model.stderr = execution_row[5]
             execution_model.return_code = execution_row[6]
             execution_model.successful = (execution_row[7] == 1)
 
@@ -116,19 +118,23 @@ class SQLiteManager:
             guid = uuid.uuid4()
 
         time = execution.time
+        if execution.time is None:
+            time = t.time()
+
         script_guid = execution.script_guid
         stdout = execution.stdout
         stderr = execution.stderr
         return_code = execution.return_code
         successful = execution.successful
 
-        query = "INSERT INTO exeuctions (guid, [time], script_guid, stdout, stderr, return_code, successful) VALUES ('{guid}', '{time}', '{script_guid}', '{stdout}', '{stderr}', {return_code}, {successful})"
+        query = "INSERT INTO executions (guid, [time], script_guid, stdout, stderr, return_code, successful) VALUES ('{guid}', {time}, '{script_guid}', '{stdout}', '{stderr}', {return_code}, {successful})"
         query = query.format(guid=str(guid), time=time, script_guid=str(script_guid), stdout=stdout, stderr=stderr, return_code=return_code, successful=int(successful))
 
         self._logger.debug("SQLiteManager - Inserting Execution Record")
         self._cursor.execute(query)
 
         execution.id = self._cursor.lastrowid
+        self._conn.commit()
 
         return self.getExecutionOfGuid(guid)
 
@@ -194,7 +200,7 @@ class SQLiteManager:
     def deleteOldestSentPingOfNode(self, node_guid):
         all_pings_of_node = self.getAllPingsOfNode(node_guid)
 
-        oldest_sent_ping = time.time()
+        oldest_sent_ping = t.time()
         oldest_ping_guid = None
         for ping in all_pings_of_node:
             if ping.send_time < oldest_sent_ping:
@@ -343,7 +349,6 @@ class SQLiteManager:
 
         return self.getNodeOfId(node_id)
 
-
     def getNodeOfGuid(self, node_guid):
         self._logger.debug("SQLiteManager - Getting Node Of Guid: " + str(node_guid))
 
@@ -483,11 +488,11 @@ class SQLiteManager:
         description = key.description
         secure_key = key.key
 
-        query = "INSERT INTO keys (guid, name, description, key) VALUES ('{guid}', '{name}', '{description}', '{key}')"
-        query = query.format(guid=str(guid), name=name, description=description, key=secure_key)
+        query = "INSERT INTO keys (guid, name, description, key) VALUES ('{guid}', '{name}', '{description}', ?)"
+        query = query.format(guid=str(guid), name=name, description=description)
 
         self._logger.debug("SQLiteManager - Inserting Key Record")
-        self._cursor.execute(query)
+        self._cursor.execute(query, [memoryview(secure_key)])
 
         key_id = self._cursor.lastrowid
         self._conn.commit()

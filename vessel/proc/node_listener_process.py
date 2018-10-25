@@ -6,12 +6,11 @@ import logging
 from logging.handlers import QueueHandler
 from db import SQLiteManager
 import threading
-import utils.vesselhelper as vh
-import json
 import time
 from threading import Lock
 import uuid
-import msgpack
+import utils.cryptor as cryptor
+import utils.socketutils as socketutils
 
 ssl = None
 
@@ -56,6 +55,8 @@ def pipe_recv_handler(node_listener_process, logger, child_pipe):
         send_success = False
         if command['command'] == 'GET':
             node_guid = command['rawdata']
+            if isinstance(node_guid, tuple):
+                node_guid = command['rawdata'][0]
             send_success = node_listener_process.forwardCommandToAppropriateNode(command, node_guid)
         elif command['command'] == 'EXEC':
             node_guid = command['rawdata'][0]
@@ -115,7 +116,7 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
                 if len(raw_message) > 0:
                     if raw_message[:1] == b'{' and raw_message[len(raw_message) - 1:] == b'}':
                         valid_message_received = True
-                        raw_message = raw_message[1:len(raw_message)-1]
+
 
             # find the node belonging to this socket
             address = node_listener_process.socketmap2portip[node_socket]
@@ -125,15 +126,13 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
             # find the aes key for this node
             key = sql_manager.getKeyOfGuid(node.key_guid)
             # decrypt the key
-            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(key.key.encode(),
-                                                                        node_listener_process.master_private_key,
-                                                                        node_listener_process.private_key_password)
 
-            command = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
-            logger.info("Command Received From Socket: " + str(command))
+            command_dict = socketutils.convert_bytes_to_object(raw_message, node_listener_process.master_private_key,
+                                                               node_listener_process.private_key_password,
+                                                               key.key)
 
-            #command_dict = json.loads(command)
-            command_dict = msgpack.unpackb(command, raw=False)
+            logger.info("Command Received From Socket: " + str(command_dict))
+
 
             if command_dict["command"] == "SYS" and command_dict["to"] == "MASTER" and command_dict["params"] == "CONN.CLOSE":
                 # this means the remote node is gracefully exiting. We should treate this as if it disconnected
@@ -249,7 +248,6 @@ class NodeListenerProcess:
         self.forwarding_mutex.acquire(blocking=True)
         self.logger.debug("Forwarding Mutex Acquired. Continueing")
 
-
         self.logger.info("Now Attempting Forwarding Command To Appropriate Node")
         self.logger.info(("Searching For Socket Matching Node Guid: " + str(node_guid)))
 
@@ -264,9 +262,9 @@ class NodeListenerProcess:
             self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
             return False
 
-        self.logger.info("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
+        self.logger.debug("Search Mapped To IP: " + node.ip + " And PORT: " + node.port)
         node_socket2 = self.portipmap2socket.get(node.ip + ":" + str(node.port), None)
-        self.logger.info("Socket: " + str(node_socket2))
+        self.logger.debug("Socket: " + str(node_socket2))
 
         if node_socket2 is None:
             self.logger.info("WARNING: IP and Port Mapping Did Not Resolve To A Socket. Can't Forward Command")
@@ -275,20 +273,13 @@ class NodeListenerProcess:
             self.logger.debug("Forwarding Mutex Released. Other Threads Can Enter")
             return False
 
-        #serialized_command = json.dumps(command)
-        serialized_command = msgpack.packb(command, use_bin_type=True)
-        self.logger.info("Serialized Command: >" + str(serialized_command) + "<")
-
         try:
             key = sql_manager.getKeyOfGuid(node.key_guid)
-            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(key.key.encode(),
-                                                                         self.master_private_key,
-                                                                         self.private_key_password)
+            message_bytes = socketutils.convert_object_to_bytes(command, self.master_private_key,
+                                                                self.private_key_password,
+                                                                key.key)
 
-            base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
-                                                                                    aes_key)
-            base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
-            node_socket2.send(base64_encrypted_bytes)
+            node_socket2.send(message_bytes)
             self.logger.info("Serialized Message Sent")
 
             sql_manager.closeEverything()  # can't use sql_manager after this
@@ -349,8 +340,8 @@ class NodeListenerProcess:
 
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
             if private_key is None or public_key is None:
-                self.master_private_key = vh.generate_private_key(self.private_key_password)
-                self.master_public_key = vh.generate_public_key(self.master_private_key, self.private_key_password)
+                self.master_private_key = cryptor.generate_private_key(self.private_key_password)
+                self.master_public_key = cryptor.generate_public_key(self.master_private_key, self.private_key_password)
 
                 private_key = Key()
                 private_key.name = "master-me.key.private"
@@ -444,17 +435,15 @@ class NodeListenerProcess:
 
                 self.logger.info("Passing Security Keys To The New Node")
 
-                #send the public key
-                node_socket.send(self.master_public_key.encode())
-                #get the encrypted aes key
+                self.logger.debug("Sending Master Public Key")
+                node_socket.send(self.master_public_key)
+                self.logger.debug("Receiving Encrypted AES Key")
                 aes_key_encrypted = node_socket.recv(4096)
-
-                # verify this key is valid
                 try:
-                    aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
-                                                                                self.master_private_key,
-                                                                                self.private_key_password)
-                    decoded = aes_key_encrypted.decode('utf-8')
+                    self.logger.debug("Validating AES Key")
+                    cryptor.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
+                                                                         self.master_private_key,
+                                                                         self.private_key_password)
                 except:
                     self.logger.exception("Incoming AES Key Is Invalid Or Failed Validation. Assuming Connection"
                                           "Is Invalid. Closing Connection")
@@ -462,7 +451,6 @@ class NodeListenerProcess:
                     continue
 
                 self.logger.info("Making Ping Request To Retrieve Node Information")
-
                 # pass a command to the node to fetch ping information and get the node name
                 action = dict()
                 action['command'] = "GET"
@@ -470,21 +458,14 @@ class NodeListenerProcess:
                 action['to'] = "NODE"
                 action['params'] = "PING"
 
-                #serialized_command = json.dumps(action)
-                serialized_command = msgpack.packb(action, use_bin_type=True)
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
-                                                                            self.master_private_key,
-                                                                            self.private_key_password)
+                message_bytes = socketutils.convert_object_to_bytes(action, self.master_private_key,
+                                                                    self.private_key_password,
+                                                                    aes_key_encrypted)
+                node_socket.send(message_bytes)
 
-                base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(serialized_command,
-                                                                                        aes_key)
-
-                node_socket.send(b'{' + base64_encrypted_bytes + b'}')
-                self.logger.info("Request Sent")
-
+                # handle retrieval of ping call
                 valid_message_received = False
                 full_encrypted_bytes: bytes = b''
-
                 while not valid_message_received:
                     self.logger.info("Getting Segment of Response")
                     encrypted_bytes = node_socket.recv(4096)
@@ -495,25 +476,22 @@ class NodeListenerProcess:
                             valid_message_received = True
                             self.logger.info("Full Message Segment Parsed. Now Processing")
 
-                # place back into encrypted_bytes the trimmed and fixed message
-                encrypted_bytes = full_encrypted_bytes[1:len(full_encrypted_bytes)]
-                command = vh.decrypt_base64_bytes_with_aes_key_to_string(encrypted_bytes, aes_key)
-                #command_dict = json.loads(command)
-                command_dict = msgpack.unpackb(command, raw=False)
+                command_dict = socketutils.convert_bytes_to_object(full_encrypted_bytes, self.master_private_key,
+                                                                   self.private_key_password,
+                                                                   aes_key_encrypted)
 
                 if command_dict["command"] == "ERROR":
                     # connection had a fatal error
                     self.logger.info("Fatal Error Trying To Ping Recently Established Node. Failed To Complete "
                                            "Connection Sequence. Connection Will Be Terminated")
-                    self.logger.info(command)
+                    self.logger.info(command_dict)
                     node_socket.close()
                     continue
 
                 self.logger.info("Adding Key To DB")
                 # add the key to our db
                 key = Key()
-                key.key = aes_key_encrypted.decode(
-                    'utf-8')  # note this key is encrypted with our public key and then base64 encoded
+                key.key = aes_key_encrypted  # note this key is encrypted with our public key and then base64 encoded
                 key.name = "node.key.aes"
                 key = self._sql_manager.insertKey(key)
 

@@ -308,6 +308,7 @@ def fetch_node_script_execution_history(sql_manager, request, logger):
 
     temp = request['from']
     request['from'] = request['to']
+    request['to'] = temp
     request['params'] = 'SUCCESS'
     request['rawdata'] = all_executions_to_dictionary
 

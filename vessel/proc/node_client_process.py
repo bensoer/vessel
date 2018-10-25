@@ -6,10 +6,11 @@ from db import SQLiteManager
 import utils.vesselhelper as vh
 import utils.script_manager as sm
 from db.models import Key
-import json
 import utils.taskrunner as taskrunner
 import time
 import msgpack
+import utils.socketutils as socketutils
+import utils.cryptor as cryptor
 
 ssl = None
 
@@ -59,20 +60,17 @@ class NodeClientProcess:
 
         self.logger.info("Connection Complete")
 
-    def _send_message(self, message:bytes, encrypt_with_key=None)->int:
+    def _send_message(self, message_data, send_raw: bool = False)->int:
         try:
-            if encrypt_with_key is not None:
-
-                node_private_key, node_private_key_password, node_aes_key = encrypt_with_key
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-
-                base64_encrypted_bytes = vh.encrypt_string_with_aes_key_to_base64_bytes(message, aes_key)
-                base64_encrypted_bytes = b'{' + base64_encrypted_bytes + b'}'
-                return self._client_socket.send(base64_encrypted_bytes)
+            if send_raw:
+                return self._client_socket.send(message_data)
             else:
-                return self._client_socket.send(message)
+                base64_encrypted_bytes = socketutils.convert_object_to_bytes(message_data,
+                                                                             self._node_private_key,
+                                                                             self._private_key_password,
+                                                                             self._node_aes_key)
+                return self._client_socket.send(base64_encrypted_bytes)
+
         except OSError as se:
             if se.errno == errno.ECONNRESET:
                 self.logger.info(
@@ -102,20 +100,21 @@ class NodeClientProcess:
                     exit()
                     return 0
                 else:
-                    return self._send_message(message, encrypt_with_key=encrypt_with_key)
+                    return self._send_message(message_data, send_raw=send_raw)
             else:
                 self.logger.info("An OSError Was Thrown While Trying To Send Message")
                 self.logger.info(se)
                 return 0
 
-    def _recv_message(self, buffer_size, decrypt_with_key_pass=None):
+    def _recv_message(self, buffer_size, recv_raw: bool = False):
         try:
 
             raw_message: bytes = b''
             valid_message_received = False
 
-            if decrypt_with_key_pass is not None:
-
+            if recv_raw:
+                return self._client_socket.recv(buffer_size)
+            else:
                 while not valid_message_received:
                     base64_encrypted_bytes = self._client_socket.recv(buffer_size)
                     raw_message += base64_encrypted_bytes
@@ -123,16 +122,13 @@ class NodeClientProcess:
                     if len(raw_message) > 0:
                         if raw_message[:1] == b'{' and raw_message[len(raw_message) - 1:] == b'}':
                             valid_message_received = True
-                            raw_message = raw_message[1:len(raw_message)-1]
 
-                node_private_key, node_private_key_password, node_aes_key = decrypt_with_key_pass
-                aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(node_aes_key,
-                                                                             node_private_key,
-                                                                             node_private_key_password)
-                message = vh.decrypt_base64_bytes_with_aes_key_to_string(raw_message, aes_key)
-                return message
-            else:
-                return self._client_socket.recv(buffer_size)
+                message_object = socketutils.convert_bytes_to_object(raw_message,
+                                                                     self._node_private_key,
+                                                                     self._private_key_password,
+                                                                     self._node_aes_key)
+                return message_object
+
 
         except OSError as se:
             if se.errno == errno.ECONNRESET:
@@ -221,16 +217,13 @@ class NodeClientProcess:
                 self.failed_initializing = True
                 return False
 
-
         try:
-
             self.logger.info("Connection Established With Master. Securing Connection With Keys")
-
-            self._master_public_key = self._recv_message(2048)
+            self._master_public_key = self._recv_message(2048, recv_raw=True)
             if self._master_public_key is None:
                 self.logger.fatal("Failed To Receive Master Node Public Key. Terminating")
-                # TODO: Pass Message to node process to shut service down
 
+                # Pass Message to node process to shut service down
                 action = dict()
                 action['command'] = "SYS"
                 action['from'] = "CLIENT"
@@ -240,20 +233,16 @@ class NodeClientProcess:
 
                 exit()
 
-            aes_key = vh.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
-                                                                        self._node_private_key,
-                                                                        self._private_key_password)
-
-            encrypted_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                 self._master_public_key)
-
-            self._send_message(encrypted_aes_key)
-
-            self.logger.info("Key Received From Master")
-            self.logger.info(self._master_public_key)
-
+            self.logger.debug("Decrypting AES Key")
+            aes_key = cryptor.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
+                                                                             self._node_private_key,
+                                                                             self._private_key_password)
+            self.logger.debug("Encrypting AES With Master Public Key")
+            encrypted_aes_key = cryptor.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
+                                                                                      self._master_public_key)
+            self.logger.debug("Sending Encrypted AES Key To Master")
+            self._send_message(encrypted_aes_key, send_raw=True)
             self.logger.info("Connection Secured")
-
         except:
             self.logger.exception("Connection With Master Node Failed. Aborting Processing")
             self.failed_initializing = True
@@ -274,12 +263,12 @@ class NodeClientProcess:
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
             if private_key is None or public_key is None or found_aes_key is None:
                 self.logger.info("Keys Have Not Been Generated Before On This Node. This May Take Some Time...")
-                self._node_private_key = vh.generate_private_key(self._private_key_password)
-                self._node_public_key = vh.generate_public_key(self._node_private_key, self._private_key_password)
-                new_aes_key = vh.generate_aes_key(self._private_key_password)
+                self._node_private_key = cryptor.generate_private_key(self._private_key_password)
+                self._node_public_key = cryptor.generate_public_key(self._node_private_key, self._private_key_password)
+                new_aes_key = cryptor.generate_aes_key(self._private_key_password)
 
                 # our aes key is stored encrypted with our public key
-                self._node_aes_key = vh.encrypt_bytes_with_public_key_to_base64_bytes(new_aes_key, self._node_public_key)
+                self._node_aes_key = cryptor.encrypt_bytes_with_public_key_to_base64_bytes(new_aes_key, self._node_public_key)
 
                 private_key = Key()
                 private_key.name = "node-me.key.private"
@@ -292,14 +281,14 @@ class NodeClientProcess:
                 self._sql_manager.insertKey(public_key)
 
                 key = Key()
-                key.key = self._node_aes_key.decode('utf-8')  # note this key is encrypted with our public key and then base64 encoded
+                key.key = self._node_aes_key  # note this key is encrypted with our public key and then base64 encoded
                 key.name = "node-me.key.aes"
                 self._sql_manager.insertKey(key)
 
             else:
                 self._node_private_key = private_key.key
                 self._node_public_key = public_key.key
-                self._node_aes_key = found_aes_key.key.encode()
+                self._node_aes_key = found_aes_key.key
 
             self.logger.info("Local Key Generation Complete")
             self.logger.info("Initializing Socket To Master")
@@ -319,11 +308,9 @@ class NodeClientProcess:
             while True:
 
                 self.logger.info("Reading Command From Socket")
-                command = self._recv_message(4096, decrypt_with_key_pass=(self._node_private_key,
-                                                                          self._private_key_password,
-                                                                          self._node_aes_key))
+                command_dict = self._recv_message(4096)
 
-                if command is None:
+                if command_dict is None:
                     self.logger.error("Failed To Receive Command. Disconnection From Master Likely Occurred. Can't "
                                       "Process Command")
 
@@ -336,24 +323,17 @@ class NodeClientProcess:
 
                     exit()
 
-                #command_dict = json.loads(command)
-                command_dict = msgpack.unpackb(command, raw=False)
-                self.logger.info("COMMAND RECEIVED")
-                self.logger.info(command)
+                self.logger.debug("Command Received: ")
+                self.logger.debug(command_dict)
 
                 try:
-
                     if command_dict["command"] == "GET" and command_dict["params"] == "SCRIPTS":
                         self.logger.info("Fetch Node Scripts Request Detected. Executing")
 
                         response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "GET" and command_dict["params"] == "SCRIPTS.HISTORY":
@@ -362,11 +342,7 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_script_execution_history(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCAN.SCRIPTS":
@@ -376,11 +352,7 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_scripts(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "GET" and command_dict["params"] == "PING":
@@ -388,11 +360,7 @@ class NodeClientProcess:
 
                         response = taskrunner.get_ping_info(command_dict, self._config)
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "CREATE" and command_dict["params"] == "DEPLOYMENT":
@@ -401,11 +369,7 @@ class NodeClientProcess:
                         response = taskrunner.create_deployment(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "GET" and command_dict["params"] == "DEPLOYMENTS":
@@ -414,11 +378,7 @@ class NodeClientProcess:
                         response = taskrunner.fetch_node_deployments(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "DEPLOYMENTS.EXECUTE":
@@ -427,23 +387,14 @@ class NodeClientProcess:
                         response = taskrunner.execute_deployment_on_node(self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "EXEC" and command_dict["params"] == "SCRIPTS.EXECUTE":
                         self.logger.info("Executing Script On Node Request Detected. Executing")
 
                         response = taskrunner.execute_script_on_node(self._sql_manager, command_dict, self.logger)
-
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                               self._private_key_password,
-                                                                               self._node_aes_key))
+                        self._send_message(response)
 
                     elif command_dict["command"] == "MIG":
                         self.logger.info("Script Migration Request Received. Importing Script")
@@ -451,11 +402,7 @@ class NodeClientProcess:
                         response = taskrunner.migrate(self._root_dir, self._sql_manager, command_dict, self.logger)
 
                         self.logger.info("Fetched Data. Now Serializing For Response")
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "SYS" and command_dict["params"] == "PING":
@@ -466,11 +413,7 @@ class NodeClientProcess:
                         command_dict["to"] = command_dict["from"]
                         command_dict["from"] = temp
 
-                        #serialized_data = json.dumps(command_dict)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(command_dict)
                         self.logger.info("Response Sent")
 
                     elif command_dict["command"] == "SYS" and command_dict["params"] == "RESTART":
@@ -485,11 +428,7 @@ class NodeClientProcess:
                         response["param"] = "CONN.CLOSE"
                         response["rawdata"] = command_dict["rawdata"]
 
-                        #serialized_data = json.dumps(response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(response)
                         self.logger.info("Response Sent")
 
                         # disconnect from master. Sleep for 2 minutes, then start reconnecting
@@ -526,11 +465,7 @@ class NodeClientProcess:
                         error_response['rawdata'] = ("Received Command Has No Mapping On This Node. Cannot Process Command",
                                                      command_dict)
 
-                        #serialized_data = json.dumps(error_response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(error_response)
                 except Exception as e:
                     self.logger.exception("Unexpected Error Thrown While Processing a Request.")
 
@@ -544,11 +479,7 @@ class NodeClientProcess:
                                                   " To: " + command_dict['to']
                         error_response['rawdata'] = "UnExpected Error Executing Request: " + str(e)
 
-                        #serialized_data = json.dumps(error_response)
-                        serialized_data = msgpack.packb(response, use_bin_type=True)
-                        self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                                   self._private_key_password,
-                                                                                   self._node_aes_key))
+                        self._send_message(error_response)
 
         except Exception as e:
             self.logger.exception("Fatal Error Processing For Node Client")
@@ -564,9 +495,4 @@ class NodeClientProcess:
                 error_response['rawdata'] = "UnExpected Error: " + str(e) + " WARNING: Node Has Likely Terminated From " \
                                                                             "This Event Or Is In A Broken State. Restart " \
                                                                             "To Recover"
-
-                #serialized_data = json.dumps(error_response)
-                serialized_data = msgpack.packb(response, use_bin_type=True)
-                self._send_message(serialized_data, encrypt_with_key=(self._node_private_key,
-                                                                           self._private_key_password,
-                                                                           self._node_aes_key))
+                self._send_message(error_response)
