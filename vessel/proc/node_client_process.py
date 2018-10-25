@@ -65,7 +65,7 @@ class NodeClientProcess:
             else:
                 base64_encrypted_bytes = socketutils.convert_object_to_bytes(message_data,
                                                                              self._node_private_key,
-                                                                             self._private_key_password,
+                                                                             self._node_public_key,
                                                                              self._node_aes_key)
                 return self._client_socket.send(base64_encrypted_bytes)
 
@@ -123,7 +123,7 @@ class NodeClientProcess:
 
                 message_object = socketutils.convert_bytes_to_object(raw_message,
                                                                      self._node_private_key,
-                                                                     self._private_key_password,
+                                                                     self._node_public_key,
                                                                      self._node_aes_key)
                 return message_object
 
@@ -234,10 +234,11 @@ class NodeClientProcess:
             self.logger.debug("Decrypting AES Key")
             aes_key = cryptor.decrypt_base64_bytes_with_private_key_to_bytes(self._node_aes_key,
                                                                              self._node_private_key,
-                                                                             self._private_key_password)
+                                                                             self._node_public_key)
             self.logger.debug("Encrypting AES With Master Public Key")
             encrypted_aes_key = cryptor.encrypt_bytes_with_public_key_to_base64_bytes(aes_key,
-                                                                                      self._master_public_key)
+                                                                                      self._master_public_key,
+                                                                                      self._node_private_key)
             self.logger.debug("Sending Encrypted AES Key To Master")
             self._send_message(encrypted_aes_key, send_raw=True)
             self.logger.info("Connection Secured")
@@ -261,12 +262,14 @@ class NodeClientProcess:
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
             if private_key is None or public_key is None or found_aes_key is None:
                 self.logger.info("Keys Have Not Been Generated Before On This Node. This May Take Some Time...")
-                self._node_private_key = cryptor.generate_private_key(self._private_key_password)
-                self._node_public_key = cryptor.generate_public_key(self._node_private_key, self._private_key_password)
-                new_aes_key = cryptor.generate_aes_key(self._private_key_password)
+                self._node_private_key = cryptor.generate_private_key()
+                self._node_public_key = cryptor.generate_public_key(self._node_private_key)
+                new_aes_key = cryptor.generate_aes_key()
 
                 # our aes key is stored encrypted with our public key
-                self._node_aes_key = cryptor.encrypt_bytes_with_public_key_to_base64_bytes(new_aes_key, self._node_public_key)
+                self._node_aes_key = cryptor.encrypt_bytes_with_public_key_to_base64_bytes(new_aes_key,
+                                                                                           self._node_public_key,
+                                                                                           self._node_private_key)
 
                 private_key = Key()
                 private_key.name = "node-me.key.private"

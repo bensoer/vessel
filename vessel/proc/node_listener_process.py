@@ -11,6 +11,7 @@ from threading import Lock
 import uuid
 import utils.cryptor as cryptor
 import utils.socketutils as socketutils
+import zmq
 
 ssl = None
 
@@ -129,7 +130,7 @@ def socket_recv_handler(node_listener_process, logger, node_socket, child_pipe):
             # decrypt the key
 
             command_dict = socketutils.convert_bytes_to_object(raw_message, node_listener_process.master_private_key,
-                                                               node_listener_process.private_key_password,
+                                                               node_listener_process.master_public_key,
                                                                key.key)
 
             logger.info("Command Received From Socket: " + str(command_dict))
@@ -277,7 +278,7 @@ class NodeListenerProcess:
         try:
             key = sql_manager.getKeyOfGuid(node.key_guid)
             message_bytes = socketutils.convert_object_to_bytes(command, self.master_private_key,
-                                                                self.private_key_password,
+                                                                self.master_public_key,
                                                                 key.key)
 
             node_socket2.send(message_bytes)
@@ -341,8 +342,8 @@ class NodeListenerProcess:
 
             # FIXME: There is no proper handling IF one of the keys exists and the other doesn't!
             if private_key is None or public_key is None:
-                self.master_private_key = cryptor.generate_private_key(self.private_key_password)
-                self.master_public_key = cryptor.generate_public_key(self.master_private_key, self.private_key_password)
+                self.master_private_key = cryptor.generate_private_key()
+                self.master_public_key = cryptor.generate_public_key(self.master_private_key)
 
                 private_key = Key()
                 private_key.name = "master-me.key.private"
@@ -364,7 +365,15 @@ class NodeListenerProcess:
 
             self.logger.info("Initializing Listener Socket")
             # startup the listening socket
-            #try:
+
+            #zmq_context = zmq.Context()
+            #master_socket = zmq_context.socket(zmq.ROUTER)
+            #master_socket.bind("tcp://" + str(self._bind_ip) + ":" + str(self._port))
+
+
+
+
+
             listener_socket = socket(AF_INET, SOCK_STREAM)
             listener_socket.bind((self._bind_ip, int(self._port)))
             listener_socket.listen(10)
@@ -444,7 +453,7 @@ class NodeListenerProcess:
                     self.logger.debug("Validating AES Key")
                     cryptor.decrypt_base64_bytes_with_private_key_to_bytes(aes_key_encrypted,
                                                                          self.master_private_key,
-                                                                         self.private_key_password)
+                                                                         self.master_public_key)
                 except:
                     self.logger.exception("Incoming AES Key Is Invalid Or Failed Validation. Assuming Connection"
                                           "Is Invalid. Closing Connection")
@@ -460,7 +469,7 @@ class NodeListenerProcess:
                 action['params'] = "PING"
 
                 message_bytes = socketutils.convert_object_to_bytes(action, self.master_private_key,
-                                                                    self.private_key_password,
+                                                                    self.master_public_key,
                                                                     aes_key_encrypted)
                 node_socket.send(message_bytes)
 
@@ -478,7 +487,7 @@ class NodeListenerProcess:
                             self.logger.info("Full Message Segment Parsed. Now Processing")
 
                 command_dict = socketutils.convert_bytes_to_object(full_encrypted_bytes, self.master_private_key,
-                                                                   self.private_key_password,
+                                                                   self.master_public_key,
                                                                    aes_key_encrypted)
 
                 if command_dict["command"] == "ERROR":
