@@ -8,6 +8,7 @@ from db.models import DeploymentScript
 from db.models import Engine
 from db.models import Ping
 from db.models import Execution
+from db.models import RecurringTask
 import datetime
 import time as t # time is used as a variable in places! sorry :(
 
@@ -36,7 +37,7 @@ class SQLiteManager:
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS nodes
                         (id INTEGER PRIMARY KEY, guid TEXT, name TEXT, ip TEXT, port TEXT, key_guid TEXT, state TEXT)''')
 
-        self._cursor.execute('''CREATE TABLE IF NOT EXISTS  scripts
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS scripts
                           (id INTEGER PRIMARY KEY, guid TEXT, node_guid TEXT, file_path TEXT, file_name TEXT, script_engine TEXT)''')
 
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS deployments
@@ -54,6 +55,9 @@ class SQLiteManager:
         self._cursor.execute('''CREATE TABLE IF NOT EXISTS executions
                             (id INTEGER PRIMARY KEY, guid TEXT, time REAL, script_guid TEXT, stdout TEXT, stderr TEXT, return_code INTEGER, successful INTEGER)''')
 
+        self._cursor.execute('''CREATE TABLE IF NOT EXISTS recurring_tasks
+                            (id INTEGER PRIMARY KEY, guid TEXT, script_guid TEXT, node_guid TEXT, cron TEXT)''')
+
         self._conn.commit()
 
     def closeEverything(self):
@@ -63,6 +67,26 @@ class SQLiteManager:
         except:
             self._logger.exception("SQLiteManager - Exception Was Thrown While Shutting Down the SQLite Connection. " +
                                    "But Were Shutting Down - So Do We Care ?")
+
+    def getAllRecurringTasks(self):
+
+        query = "SELECT id, guid, script_guid, node_guid, cront FROM recurring_tasks"
+        self._cursor.execute(query)
+
+        recurring_tasks = list()
+        for recurring_task in self._cursor.fetchall():
+
+            recurring_task_model = RecurringTask()
+            recurring_task_model.id = recurring_task[0]
+            recurring_task_model.guid = uuid.UUID(recurring_task[1])
+            recurring_task_model.script_guid = uuid.UUID(recurring_task[2])
+            recurring_task_model.node_guid = uuid.UUID(recurring_task[3])
+            recurring_task_model.cron = recurring_task[4]
+
+            recurring_tasks.append(recurring_task_model)
+
+        return recurring_tasks
+
 
     def getAllExecutionsOfScriptGuid(self, script_guid):
         self._logger.debug("SQLiteManager - Fetching All Executions of Script")

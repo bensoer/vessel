@@ -36,6 +36,7 @@ def initialize_all_logging_configuration(log_dir):
     http_listener_process_logpath = log_dir + "/http-listener-process.log"
     terminal_listener_process_logpath = log_dir + "/terminal-listener-process.log"
     node_client_process_logpath = log_dir + "/node-client-process.log"
+    recurring_task_process_logpath = log_dir + "/node-recurring-task-process.log"
 
     node_logger = logging.getLogger("NodeProcessLogger")
     node_logger.setLevel(logging.DEBUG)
@@ -87,6 +88,14 @@ def initialize_all_logging_configuration(log_dir):
         '%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s')
     terminal_listener_process_handler.setFormatter(terminal_listener_process_format)
     terminal_listener_process_logger.addHandler(terminal_listener_process_handler)
+
+    recurring_task_process_logger = logging.getLogger("RecurringTaskProcessLogger")
+    recurring_task_process_logger.setLevel(logging.DEBUG)
+    recurring_task_process_handler = RotatingFileHandler(recurring_task_process_logpath, maxBytes=8192, backupCount=10)
+    recurring_task_process_format = logging.Formatter(
+        '%(name)s@%(asctime)s : %(filename)s -> %(funcName)s - %(levelname)s - %(message)s')
+    recurring_task_process_handler.setFormatter(recurring_task_process_format)
+    recurring_task_process_logger.addHandler(recurring_task_process_handler)
 
 
 def start_logging_thread():
